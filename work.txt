@@ -1,0 +1,23 @@
+N/W leader
+
+1) Generate Sn
+2) Announce Hash - Sn  (Broadcast)
+3) Announce Vin Cert   (Broadcast)
+4) Accept Join request (P2P)
+5) Send Sn as soon as we receive join (P2P)
+
+
+------------------------------------
+
+
+N/W member
+1) Listen for Hash of Sn
+2) Listen for Vin Cert
+3) Send join - as soon as we get Hash of Sn
+4) Listen for (Send Sn) - we may need to wait here till Vin cert is received
+
+------------------------------------
+
+Consumer code:
+
+1) Need to call Ping
