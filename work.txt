@@ -17,7 +17,42 @@ N/W member
 4) Listen for (Send Sn) - we may need to wait here till Vin cert is received
 
 ------------------------------------
+MESSAGE-SERVER
 
-Consumer code:
+IMP *****
+1) In Consumer code - Need to call Ping
+2) TODO: check if exchange is being used during clean up. qserver/server.go line: 137
 
-1) Need to call Ping
+-------------------------------------
+
+Messages
+
+2B000 -> Announce Sn
+2B100 -> Announce Vin Cert
+2B200 -> Join
+2B300 -> Send Sn
+2B400 -> Start Rekey
+2B500 -> Send nonce
+
+-------------------------------------
+
+Steps: Member ECU
+
+1) As soon as it starts (gets connected to message-server), it sends {start_rekey}
+2) It then sends it's {nonce||hash(Sn)}.
+3) Waits to receive - {announce Sn}
+    a) If it times out after a while
+        It has correct Sv
+    b) If it receives {Announce_Sn},
+        Sends {join} for network formation
+
+    Consumers:
+        1) Consumer listening for {announce_sn}
+        2) Consumer listening for {announce_vin_cert}
+        3) Direct exchange for sending and receving messages from Leader
+    Producers:
+        1) Broadcast {start_rekey}
+        2) Broadcast {nonce}
+
+Steps: Leader ECU
+1) 

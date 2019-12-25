@@ -3,6 +3,8 @@ package domain
 import (
 	"crypto/rand"
 	"errors"
+
+	"github.com/sauravgsh16/ecu/config"
 )
 
 const (
@@ -31,15 +33,18 @@ type Ecu struct {
 	MacKey []byte
 	// Ecu Kind: leader or member
 	Kind int
+	// Location where certificates are present
+	CertLoc string
 }
 
 // NewEcu returns a new Ecu with Sn = 0
 // Complete Sn is a combination of Sn1 and Sn2
 func NewEcu(kind int) (*Ecu, error) {
 	v := &Ecu{
-		EncKey: make([]byte, 64),
-		MacKey: make([]byte, 64),
-		Sn:     make([]byte, 16),
+		EncKey:  make([]byte, 64),
+		MacKey:  make([]byte, 64),
+		Sn:      make([]byte, 16),
+		CertLoc: config.DefaultCertificateLocation,
 	}
 	if _, err := rand.Read(v.EncKey); err != nil {
 		return nil, err

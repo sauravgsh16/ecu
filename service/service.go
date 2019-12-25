@@ -3,35 +3,77 @@ package service
 import (
 	"sync"
 
-	"github.com/sauravgsh16/ecu/util"
-
 	"github.com/sauravgsh16/ecu/domain"
+	"github.com/sauravgsh16/ecu/util"
 )
 
-// EcuService interface ....
-type EcuService interface{}
+const (
+	leader = iota
+	member
 
-type ecuService struct {
-	domain *domain.Ecu
-	SN     []byte
-	mux    sync.RWMutex
+	initialized = 1
+	broadcast   = "fanout"
+	peer        = "direct"
+)
+
+// Leader interface ....
+type Leader interface {
+	AnnounceSN() error
+	AnnounceVinCert() error
 }
 
-// NewEcuService returns a new vehicle service
-func NewEcuService(kind int) (EcuService, error) {
-	d, err := domain.NewEcu(kind)
+// Member interface ....
+type Member interface{}
+
+type ecuService struct {
+	domain   *domain.Ecu
+	SN       []byte
+	mux      sync.RWMutex
+	emitter  *broadcastSender
+	consumer *broadcastConsumer
+}
+
+func (e *ecuService) AnnounceSN() error {
+	hashSn := util.GenerateHash(e.SN)
+
+	if err := e.emitter.broadcast([]byte(hashSn)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (e *ecuService) AnnounceVinCert() error {
+	return nil
+}
+
+// TODO : FIND WAY TO INITIALIZE HANDLERS
+// Need to decide how many handler initialization required
+
+// NewMember returns a new Member ECU
+func NewMember() (Member, error) {
+	d, err := domain.NewEcu(member)
 	if err != nil {
 		return nil, err
 	}
-	vs := &ecuService{domain: d}
-	if err = vs.init(); err != nil {
-		// ECU is member type
-		if err == domain.ErrUnauthorizedSnGeneration && kind == domain.Member {
-			return vs, nil
-		}
+
+	return &ecuService{domain: d}, nil
+}
+
+// NewLeader returns a new Leader ECU
+func NewLeader() (Leader, error) {
+	d, err := domain.NewEcu(leader)
+	if err != nil {
 		return nil, err
 	}
-	return vs, nil
+	l := &ecuService{
+		domain: d,
+	}
+
+	if err := l.init(); err != nil {
+		return nil, err
+	}
+	return l, nil
 }
 
 func (e *ecuService) init() error {
@@ -44,10 +86,5 @@ func (e *ecuService) init() error {
 
 	e.SN = []byte(e.domain.GetSn())
 
-	return nil
-}
-
-func (e *ecuService) AnnounceSn() error {
-	_ = util.GenerateHash(e.SN)
 	return nil
 }

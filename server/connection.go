@@ -18,10 +18,10 @@ type Connection struct {
 	network       net.Conn
 	msgServerConn *qclient.Connection
 	mux           sync.Mutex
-	status        int
 	writer        io.Writer
 	service       service.EcuService
 	channels      map[string]*server.Channel
+	status        int
 }
 
 // NewConnection returns a new connection
