@@ -3,19 +3,16 @@ package client
 import (
 	"errors"
 	"fmt"
-	"math/rand"
 	"sync"
-	"sync/atomic"
-	"time"
 
 	"github.com/sauravgsh16/ecu/config"
+	"github.com/sauravgsh16/ecu/util"
 	"github.com/sauravgsh16/message-server/proto"
 	"github.com/sauravgsh16/message-server/qclient"
 )
 
 var (
-	conn    *qclient.Connection
-	counter int64
+	conn *qclient.Connection
 )
 
 var (
@@ -66,13 +63,6 @@ func init() {
 	if err != nil {
 		panic(fmt.Sprintf("failed to connect to message server, %s", err))
 	}
-
-	rand.Seed(time.Now().UnixNano())
-	counter = time.Now().UnixNano()
-}
-
-func nextCnt() int64 {
-	return atomic.AddInt64(&counter, 1)
 }
 
 func (ms *messageServer) DeclareExchange(name, extype string, noWait bool) (int64, error) {
@@ -83,7 +73,7 @@ func (ms *messageServer) DeclareExchange(name, extype string, noWait bool) (int6
 	ms.mux.Lock()
 	defer ms.mux.Unlock()
 
-	id := nextCnt()
+	id := util.NextCounter()
 	ms.exchanges[id] = name
 
 	return id, nil
