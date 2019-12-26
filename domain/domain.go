@@ -1,8 +1,13 @@
 package domain
 
 import (
+	"bytes"
 	"crypto/rand"
 	"errors"
+	"fmt"
+	"io/ioutil"
+	"path/filepath"
+	"sync"
 
 	"github.com/sauravgsh16/ecu/config"
 )
@@ -11,7 +16,9 @@ const (
 	// SnSize byte size
 	SnSize = 16
 
+	// Leader ECU type
 	Leader = iota
+	// Member ECU type
 	Member
 )
 
@@ -25,6 +32,8 @@ var (
 // Ecu struct
 type Ecu struct {
 	VIN string
+	// Nonce - unique identification
+	Nonce string
 	// Network key
 	Sn []byte
 	// EncKey -Sv-ENC - Ecu key for encryption
@@ -35,43 +44,67 @@ type Ecu struct {
 	Kind int
 	// Location where certificates are present
 	CertLoc string
+	// Cert bytes
+	Certs map[string][]byte
+	mux   sync.Mutex
 }
 
 // NewEcu returns a new Ecu with Sn = 0
 // Complete Sn is a combination of Sn1 and Sn2
 func NewEcu(kind int) (*Ecu, error) {
-	v := &Ecu{
+	e := &Ecu{
 		EncKey:  make([]byte, 64),
 		MacKey:  make([]byte, 64),
 		Sn:      make([]byte, 16),
 		CertLoc: config.DefaultCertificateLocation,
+		Certs:   make(map[string][]byte, 0),
 	}
-	if _, err := rand.Read(v.EncKey); err != nil {
+	if _, err := rand.Read(e.EncKey); err != nil {
 		return nil, err
 	}
-	if _, err := rand.Read(v.MacKey); err != nil {
+	if _, err := rand.Read(e.MacKey); err != nil {
 		return nil, err
 	}
 
 	switch kind {
 	case Leader:
-		v.Kind = Leader
+		e.Kind = Leader
 	case Member:
-		v.Kind = Member
+		e.Kind = Member
 	default:
 		return nil, ErrInvalidEcuKind
 	}
 
-	return v, nil
+	if err := e.loadCerts(); err != nil {
+		return nil, err
+	}
+
+	if err := e.generateNonce(); err != nil {
+		return nil, err
+	}
+
+	return e, nil
+}
+
+func (e *Ecu) generateNonce() error {
+	b := make([]byte, 16)
+	buf := bytes.NewBuffer(b)
+
+	if _, err := rand.Read(buf.Bytes()); err != nil {
+		return err
+	}
+
+	e.Nonce = string(buf.Bytes())
+	return nil
 }
 
 // GenerateSn generates and sets the Ecu Sn
-func (v *Ecu) GenerateSn() error {
-	if v.Kind != Leader {
+func (e *Ecu) GenerateSn() error {
+	if e.Kind != Leader {
 		return ErrUnauthorizedSnGeneration
 	}
 
-	if !checkZero(v.Sn) {
+	if !checkZero(e.Sn) {
 		return ErrResetSn
 	}
 
@@ -80,16 +113,30 @@ func (v *Ecu) GenerateSn() error {
 		return err
 	}
 
-	copy(v.Sn, []byte(sn))
+	copy(e.Sn, []byte(sn))
 	return nil
 }
 
 // GetSn returns the Ecu Sn string
-func (v *Ecu) GetSn() string {
-	if checkZero(v.Sn) {
+func (e *Ecu) GetSn() string {
+	if checkZero(e.Sn) {
 		return "0"
 	}
-	return string(v.Sn)
+	return string(e.Sn)
+}
+
+func (e *Ecu) loadCerts() error {
+	e.mux.Lock()
+	defer e.mux.Unlock()
+
+	for _, c := range config.DefaultCertificates {
+		b, err := ioutil.ReadFile(filepath.Join(config.DefaultCertificateLocation, c))
+		if err != nil {
+			return fmt.Errorf("failed to load certificates, %s", err.Error())
+		}
+		e.Certs[c] = b
+	}
+	return nil
 }
 
 func checkZero(b []byte) bool {
