@@ -51,8 +51,8 @@ func (s *subscriber) bindQueue() error {
 	return nil
 }
 
-func (s *subscriber) Consume() (chan qclient.Delivery, error) {
-	return s.dChan, nil
+func (s *subscriber) Consume1stPattern() (<-chan qclient.Delivery, error) {
+	return nil, nil
 }
 
 // New returns a new consumer
