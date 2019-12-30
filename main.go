@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	uuid "github.com/satori/go.uuid"
 
@@ -41,17 +42,6 @@ type AnnounceSn struct {
 	Message *clientnew.Message
 }
 
-func (a *AnnounceSn) Publish() error {
-	if err := a.PublishMessage(a.Message); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (a *AnnounceSn) Close() error {
-	return a.ClosePublisher()
-}
-
 func main() {
 	var req Request
 
@@ -87,5 +77,21 @@ func main() {
 		fmt.Println(err)
 	}
 
-	fmt.Println("Success\n")
+	fmt.Println("Success")
+
+	c := make(chan struct{})
+
+	go test(c)
+	select {
+	case <-c:
+		fmt.Printf("received close\n")
+	}
+}
+
+func test(c chan struct{}) {
+	timeout := time.After(5 * time.Second)
+	select {
+	case <-timeout:
+		close(c)
+	}
 }

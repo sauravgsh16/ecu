@@ -92,3 +92,7 @@ P2P
         b) Receive
     Need to share same queue name
 -------------------------------------
+
+
+ISSUE :
+1) Subscriber :- BasicDelivery not getting triggered with new subscriber logic

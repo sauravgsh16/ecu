@@ -15,13 +15,13 @@ var (
 
 // Publisher interface
 type Publisher interface {
-	PublishMessage(msg ...*Message) error
-	ClosePublisher() error
+	Publish(msg ...*Message) error
+	Close() error
 }
 
 type publisher struct {
 	cw     *connectionWrapper
-	Ch     *qclient.Channel
+	ch     *qclient.Channel
 	config Config
 }
 
@@ -47,31 +47,38 @@ func NewPublisher(c Config) (Publisher, error) {
 func (p *publisher) setChannel() error {
 	var err error
 
-	p.Ch, err = p.cw.conn.Channel()
+	p.ch, err = p.cw.conn.Channel()
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (p *publisher) ClosePublisher() error {
-	if err := p.Ch.Close(); err != nil {
+func (p *publisher) Close() error {
+
+	// TODO: Better implmentation
+	// ChannelClose should wait for ChannelCloseOk message
+
+	if err := p.ch.Close(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (p *publisher) PublishMessage(msgs ...*Message) error {
+func (p *publisher) Publish(msgs ...*Message) error {
 	if p.cw.closed {
 		return errPublishOnClosedConn
 	}
 
-	switch p.config.Exchange.Type {
-	case "fanout":
+	p.cw.pubWG.Add(1)
+	defer p.cw.pubWG.Done()
+
+	switch p.config.Type {
+	case broadcastExType:
 		if err := p.declareExchange(); err != nil {
 			return err
 		}
-	case "direct":
+	case p2pExType:
 		if err := p.declareQueue(); err != nil {
 			return err
 		}
@@ -99,7 +106,7 @@ func (p *publisher) publishMessage(msg *Message) error {
 	rk := p.config.QueueDeclare.Queue
 	imme := p.config.Publish.Immediate
 
-	if err := p.Ch.Publish(ex, rk, imme, servMsg); err != nil {
+	if err := p.ch.Publish(ex, rk, imme, servMsg); err != nil {
 		return errPublishFailure
 	}
 	return nil
@@ -110,7 +117,7 @@ func (p *publisher) declareExchange() error {
 	exType := p.config.Exchange.Type
 	noWait := p.config.Exchange.NoWait
 
-	if err := p.Ch.ExchangeDeclare(ex, exType, noWait); err != nil {
+	if err := p.ch.ExchangeDeclare(ex, exType, noWait); err != nil {
 		return err
 	}
 	return nil
@@ -120,7 +127,7 @@ func (p *publisher) declareQueue() error {
 	q := p.config.QueueDeclare.Queue
 	noWait := p.config.QueueDeclare.NoWait
 
-	_, err := p.Ch.QueueDeclare(q, noWait)
+	_, err := p.ch.QueueDeclare(q, noWait)
 	if err != nil {
 		return err
 	}
