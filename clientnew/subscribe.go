@@ -195,9 +195,12 @@ func (s *subscriber) declareQueue() error {
 	q := s.config.QueueDeclare.Queue
 	noWait := s.config.QueueDeclare.NoWait
 
-	_, err := s.ch.QueueDeclare(q, noWait)
+	qOk, err := s.ch.QueueDeclare(q, noWait)
 	if err != nil {
 		return err
+	}
+	if qOk.Queue != q {
+		return errors.New("Queue name mismatch")
 	}
 	return nil
 }

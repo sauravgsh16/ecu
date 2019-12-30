@@ -96,3 +96,4 @@ P2P
 
 ISSUE :
 1) Subscriber :- BasicDelivery not getting triggered with new subscriber logic
+2) NotifyReturns :- add - now system just panics. (need to add when failure to publish message)

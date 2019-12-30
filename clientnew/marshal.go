@@ -5,7 +5,6 @@ import (
 	"reflect"
 
 	multierror "github.com/hashicorp/go-multierror"
-
 	"github.com/sauravgsh16/message-server/qclient"
 )
 

@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	uuid "github.com/satori/go.uuid"
-
 	"github.com/sauravgsh16/ecu/clientnew"
 	// "log"
 )
@@ -60,7 +58,8 @@ func main() {
 
 	config := bp.Marshal()
 	msg := &clientnew.Message{
-		UUID:    fmt.Sprintf("%s", uuid.Must(uuid.NewV4())),
+		// UUID:    fmt.Sprintf("%s", uuid.Must(uuid.NewV4())),
+		UUID:    "fuck_that_shit",
 		Payload: clientnew.Payload([]byte("a test string")),
 		Metadata: clientnew.Metadata(map[string]interface{}{
 			"ContentType":   "text/plain",
@@ -73,7 +72,7 @@ func main() {
 	asn := AnnounceSn{p, msg}
 	defer asn.Close()
 
-	if err := asn.Publish(); err != nil {
+	if err := asn.Publish(msg); err != nil {
 		fmt.Println(err)
 	}
 
