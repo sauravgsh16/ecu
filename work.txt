@@ -55,4 +55,40 @@ Steps: Member ECU
         2) Broadcast {nonce}
 
 Steps: Leader ECU
-1) 
+
+------------------------------------
+Queues 
+
+1) P2P
+    a) Join Queue
+    b) Send Sn Queue
+    c) Simple Message Queue -- other messages
+
+2) Broadcast
+    a) AnnounceSn Queue
+    b) Announce Hash(Sn) Queue
+    c) Rekey Queue
+    d) Nonce Queue
+
+-------------------------------------
+Broadcast
+    1) For Publish:
+        a) Declare exchange
+        b) Publish on that exchange
+    2) For Subscribe:
+        a) Declare exchange
+        b) Declare Queue
+        c) Bind Queue
+        d) Consume
+    Exchange name should be same, when declaring exchange
+
+
+P2P
+    1) For send:
+        a) Declare Queue
+        b) Publish
+    2) For Receive:
+        a) Declare Queue
+        b) Receive
+    Need to share same queue name
+-------------------------------------

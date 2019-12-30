@@ -7,18 +7,36 @@ import (
 // Payload represents actual bytes
 type Payload []byte
 
+// Metadata represents the message metadata
+type Metadata map[string]interface{}
+
+// Set metadata
+func (m Metadata) Set(key string, value interface{}) {
+	m[key] = value
+}
+
+// Get metadata
+func (m Metadata) Get(key string) interface{} {
+	val, ok := m[key]
+	if !ok {
+		return ""
+	}
+	return val
+}
+
 // Message is a wrapper on the actual payload
 type Message struct {
-	UUID    string
-	Payload Payload
-	ctx     context.Context
+	UUID     string
+	Payload  Payload
+	ctx      context.Context
+	Metadata Metadata
 }
 
 // NewMessage returns a new message
-func NewMessage(uuid string, p Payload) *Message {
+func NewMessage(p Payload) *Message {
 	return &Message{
-		UUID:    uuid,
-		Payload: p,
+		Payload:  p,
+		Metadata: make(map[string]interface{}),
 	}
 }
 

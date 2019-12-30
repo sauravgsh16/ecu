@@ -20,6 +20,10 @@ type MessageSession struct {
 	Consumer  chan *qclient.Delivery
 }
 
+func NewMessageSession() *MessageSession {
+
+}
+
 // Close tears down the MessageSession
 func (ms *MessageSession) Close() error {
 	if ms.conn == nil {

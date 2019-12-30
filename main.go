@@ -3,6 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+
+	uuid "github.com/satori/go.uuid"
+
+	"github.com/sauravgsh16/ecu/clientnew"
 	// "log"
 )
 
@@ -23,20 +27,65 @@ func main() {
 }
 */
 
+const (
+	url = "tcp://localhost:9000"
+)
+
 type Request struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
+}
+
+type AnnounceSn struct {
+	clientnew.Publisher
+	Message *clientnew.Message
+}
+
+func (a *AnnounceSn) Publish() error {
+	if err := a.PublishMessage(a.Message); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (a *AnnounceSn) Close() error {
+	return a.ClosePublisher()
 }
 
 func main() {
 	var req Request
 
 	b := []byte(`{"name": "saurav", "email": "test@foo.com"}`)
-	fmt.Printf("%+v\n", b)
 
 	if err := json.Unmarshal(b, &req); err != nil {
 		fmt.Println(err)
 	}
 
-	fmt.Printf("%+v\n", req)
+	bp := clientnew.BroadCastPublish{
+		URI:            url,
+		ExchangeName:   "test",
+		ExchangeNoWait: false,
+		Immediate:      false,
+	}
+
+	config := bp.Marshal()
+	msg := &clientnew.Message{
+		UUID:    fmt.Sprintf("%s", uuid.Must(uuid.NewV4())),
+		Payload: clientnew.Payload([]byte("a test string")),
+		Metadata: clientnew.Metadata(map[string]interface{}{
+			"ContentType":   "text/plain",
+			"MessageID":     "msgID",
+			"UserID":        "userid",
+			"ApplicationID": "aapid",
+		}),
+	}
+	p, _ := clientnew.NewPublisher(config)
+	asn := AnnounceSn{p, msg}
+	defer asn.Close()
+
+	if err := asn.Publish(); err != nil {
+		fmt.Println(err)
+	}
+
+	fmt.Println("Success\n")
 }
