@@ -53,6 +53,7 @@ func (cw *connectionWrapper) connect() error {
 				return
 			case <-timeout:
 				close(connected)
+				ticker.Stop()
 				return
 			}
 		}

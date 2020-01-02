@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/sauravgsh16/ecu/clientnew"
 )
@@ -35,21 +36,18 @@ func main() {
 
 	ch, err := s.Subscribe(ctx)
 
-	for msg := range ch {
-		fmt.Printf("%#v", msg)
+	timeout := time.After(30 * time.Second)
+
+loop:
+	for {
+		select {
+		case msg := <-ch:
+			fmt.Printf("%#v\n", msg)
+
+		case <-timeout:
+			ctx.Done()
+			break loop
+		}
 	}
 
-	/*
-		timeout := time.After(30 * time.Second)
-
-		for {
-			select {
-			case msg := <-ch:
-				fmt.Printf("%#v", msg)
-
-			case <-timeout:
-				ctx.Done()
-			}
-		}
-	*/
 }
