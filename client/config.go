@@ -46,35 +46,6 @@ func (bp BroadCastPublish) Marshal() Config {
 	return c
 }
 
-// SendPublish struct
-type SendPublish struct {
-	URI         string
-	QueueName   string
-	QueueNoWait bool
-	Immediate   bool
-}
-
-// Marshal data to Config struct
-func (s SendPublish) Marshal() Config {
-	c := NewBareConfig(s.URI, p2pExType)
-
-	v := reflect.ValueOf(s)
-	t := v.Type()
-
-	for i := 0; i < v.NumField(); i++ {
-		switch t.Field(i).Name {
-		case "QueueName":
-			c.QueueDeclare.Queue = v.Field(i).Interface().(string)
-		case "QueueNoWait":
-			c.QueueDeclare.NoWait = v.Field(i).Interface().(bool)
-		case "Immediate":
-			c.Publish.Immediate = v.Field(i).Interface().(bool)
-		default:
-		}
-	}
-	return c
-}
-
 // BroadcastSubscribe struct
 type BroadcastSubscribe struct {
 	URI            string
@@ -126,34 +97,98 @@ func (bs BroadcastSubscribe) Marshal() Config {
 	return c
 }
 
-// ExchangeConfig struct
-type ExchangeConfig struct {
+// PeerSend struct
+type PeerSend struct {
+	URI         string
+	QueueName   string
+	QueueNoWait bool
+	Immediate   bool
+}
+
+// Marshal data to Config struct
+func (s PeerSend) Marshal() Config {
+	c := NewBareConfig(s.URI, p2pExType)
+
+	v := reflect.ValueOf(s)
+	t := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		switch t.Field(i).Name {
+		case "QueueName":
+			c.QueueDeclare.Queue = v.Field(i).Interface().(string)
+		case "QueueNoWait":
+			c.QueueDeclare.NoWait = v.Field(i).Interface().(bool)
+		case "Immediate":
+			c.Publish.Immediate = v.Field(i).Interface().(bool)
+		default:
+		}
+	}
+	return c
+}
+
+// PeerReceive struct
+type PeerReceive struct {
+	URI            string
+	QueueName      string
+	ConsumerName   string
+	ConsumerNoAck  bool
+	ConsumerNoWait bool
+}
+
+// Marshal data to Config struct
+func (r PeerReceive) Marshal() Config {
+	c := NewBareConfig(r.URI, p2pExType)
+
+	v := reflect.ValueOf(r)
+	t := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		switch t.Field(i).Name {
+		case "QueueName":
+			c.QueueDeclare.Queue = v.Field(i).Interface().(string)
+			c.Consumer.Queue = v.Field(i).Interface().(string)
+		case "QueueNoWait":
+			c.QueueDeclare.NoWait = v.Field(i).Interface().(bool)
+		case "ConsumerName":
+			c.Consumer.Consumer = v.Field(i).Interface().(string)
+		case "ConsumerNoAck":
+			c.Consumer.NoAck = v.Field(i).Interface().(bool)
+		case "ConsumerNoWait":
+			c.Consumer.NoWait = v.Field(i).Interface().(bool)
+		default:
+		}
+	}
+	return c
+}
+
+// exchangeConfig struct
+type exchangeConfig struct {
 	Name   string
 	Type   string
 	NoWait bool
 }
 
-// PublishConfig struct
-type PublishConfig struct {
+// publishConfig struct
+type publishConfig struct {
 	Immediate bool
 }
 
-// ConsumerConfig struct
-type ConsumerConfig struct {
+// consumerConfig struct
+type consumerConfig struct {
 	Queue    string
 	Consumer string
 	NoWait   bool
 	NoAck    bool
 }
 
-// QueueDeclareConfig struct
-type QueueDeclareConfig struct {
+// queueDeclareConfig struct
+type queueDeclareConfig struct {
 	Queue  string
 	NoWait bool
 }
 
-// QueueBindConfig struct
-type QueueBindConfig struct {
+// queueBindConfig struct
+type queueBindConfig struct {
 	Queue      string
 	Exchange   string
 	RoutingKey string
@@ -164,11 +199,11 @@ type QueueBindConfig struct {
 type Config struct {
 	URI          string
 	Type         string // Defines the exchange type
-	Exchange     ExchangeConfig
-	Publish      PublishConfig
-	Consumer     ConsumerConfig
-	QueueDeclare QueueDeclareConfig
-	QueueBind    QueueBindConfig
+	Exchange     exchangeConfig
+	Publish      publishConfig
+	Consumer     consumerConfig
+	QueueDeclare queueDeclareConfig
+	QueueBind    queueBindConfig
 	Marshaller   Marshaller
 }
 
@@ -177,23 +212,13 @@ func NewBareConfig(uri, t string) Config {
 	return Config{
 		URI:          uri,
 		Type:         t,
-		Exchange:     ExchangeConfig{},
-		Publish:      PublishConfig{},
-		Consumer:     ConsumerConfig{},
-		QueueDeclare: QueueDeclareConfig{},
-		QueueBind:    QueueBindConfig{},
+		Exchange:     exchangeConfig{},
+		Publish:      publishConfig{},
+		Consumer:     consumerConfig{},
+		QueueDeclare: queueDeclareConfig{},
+		QueueBind:    queueBindConfig{},
 		Marshaller:   NewMarshaller(),
 	}
-}
-
-// NewBroadCastPublisherConfig config
-func NewBroadCastPublisherConfig(pub BroadCastPublish) Config {
-	return Config{}
-}
-
-// NewP2PPublisherConfig struct
-func NewP2PPublisherConfig() Config {
-	return Config{}
 }
 
 // Validate the config

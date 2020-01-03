@@ -50,7 +50,6 @@ type Ecu struct {
 }
 
 // NewEcu returns a new Ecu with Sn = 0
-// Complete Sn is a combination of Sn1 and Sn2
 func NewEcu(kind int) (*Ecu, error) {
 	e := &Ecu{
 		EncKey:  make([]byte, 64),

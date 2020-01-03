@@ -95,5 +95,14 @@ P2P
 
 
 ISSUE :
-1) Subscriber :- BasicDelivery not getting triggered with new subscriber logic
-2) NotifyReturns :- add - now system just panics. (need to add when failure to publish message)
+1) NotifyReturns :- add - now system just panics. (need to add when failure to publish message)
+
+
+-------------------------------------
+TODO:
+
+1) On invoking client.NewPublisher -> it creates a new connection
+Find way to work on same connection.
+
+2) When calling Publish -> it re-declares exchange, q, blah ....
+Skip all these steps and just call the publish method on qclient.
