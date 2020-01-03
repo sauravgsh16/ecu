@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sauravgsh16/ecu/clientnew"
+	"github.com/sauravgsh16/ecu/client"
 	// "log"
 )
 
@@ -36,8 +36,8 @@ type Request struct {
 }
 
 type AnnounceSn struct {
-	clientnew.Publisher
-	Message *clientnew.Message
+	client.Publisher
+	Message *client.Message
 }
 
 func main() {
@@ -49,7 +49,7 @@ func main() {
 		fmt.Println(err)
 	}
 
-	bp := clientnew.BroadCastPublish{
+	bp := client.BroadCastPublish{
 		URI:            url,
 		ExchangeName:   "test",
 		ExchangeNoWait: false,
@@ -57,18 +57,18 @@ func main() {
 	}
 
 	config := bp.Marshal()
-	msg := &clientnew.Message{
+	msg := &client.Message{
 		// UUID:    fmt.Sprintf("%s", uuid.Must(uuid.NewV4())),
 		UUID:    "f**k_that_shit",
-		Payload: clientnew.Payload([]byte("a test string")),
-		Metadata: clientnew.Metadata(map[string]interface{}{
+		Payload: client.Payload([]byte("a test string")),
+		Metadata: client.Metadata(map[string]interface{}{
 			"ContentType":   "text/plain",
 			"MessageID":     "msgID",
 			"UserID":        "userid",
 			"ApplicationID": "aapid",
 		}),
 	}
-	p, _ := clientnew.NewPublisher(config)
+	p, _ := client.NewPublisher(config)
 	asn := AnnounceSn{p, msg}
 	defer asn.Close()
 

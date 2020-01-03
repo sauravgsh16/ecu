@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/sauravgsh16/ecu/clientnew"
+	"github.com/sauravgsh16/ecu/client"
 )
 
 const (
@@ -14,7 +14,7 @@ const (
 )
 
 func main() {
-	bs := clientnew.BroadcastSubscribe{
+	bs := client.BroadcastSubscribe{
 		URI:            url,
 		ExchangeName:   "test",
 		ExchangeNoWait: false,
@@ -28,7 +28,7 @@ func main() {
 	}
 
 	config := bs.Marshal()
-	s, err := clientnew.NewSubscriber(config)
+	s, err := client.NewSubscriber(config)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}

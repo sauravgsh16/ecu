@@ -1,4 +1,4 @@
-package clientnew
+package client
 
 import (
 	"fmt"
