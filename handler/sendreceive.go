@@ -9,7 +9,7 @@ import (
 
 // Sender interface
 type Sender interface {
-	Send() error
+	Send(msg *client.Message) error
 }
 
 // Receiver interface
@@ -18,16 +18,15 @@ type Receiver interface {
 }
 
 type send struct {
-	client.Publisher
-	msg *client.Message
+	p client.Publisher
 }
 
-func (s *send) Send() error {
-	return s.Publish(s.msg)
+func (s *send) Send(msg *client.Message) error {
+	return s.p.Publish(msg)
 }
 
 type receive struct {
-	client.Subscriber
+	s   client.Subscriber
 	ctx context.Context
 	out chan *client.Message
 }
@@ -38,7 +37,7 @@ func (r *receive) StartReceiver(done chan interface{}) (chan *client.Message, er
 	}
 	var err error
 
-	r.out, err = r.Subscribe(r.ctx)
+	r.out, err = r.s.Subscribe(r.ctx)
 	if err != nil {
 		return nil, err
 	}

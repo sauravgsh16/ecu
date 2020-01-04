@@ -32,23 +32,23 @@ type peer struct {
 func (sr peer) Peer() bool { return true }
 
 // NewSnAnnouncer returns a new Sn broadcaster
-func NewSnAnnouncer(msg *client.Message) (Sender, error) {
-	return newBroadcastSender(snExName, msg)
+func NewSnAnnouncer() (Sender, error) {
+	return newBroadcastSender(snExName)
 }
 
 // NewVinAnnouncer returns a new Vin broadcaster
-func NewVinAnnouncer(msg *client.Message) (Sender, error) {
-	return newBroadcastSender(vinExName, msg)
+func NewVinAnnouncer() (Sender, error) {
+	return newBroadcastSender(vinExName)
 }
 
 // NewRekeyAnnouncer returns a new start Rekey broadcaster
-func NewRekeyAnnouncer(msg *client.Message) (Sender, error) {
-	return newBroadcastSender(rkExName, msg)
+func NewRekeyAnnouncer() (Sender, error) {
+	return newBroadcastSender(rkExName)
 }
 
 // NewNonceAnnouncer returns a new Nonce broadcaster
-func NewNonceAnnouncer(msg *client.Message) (Sender, error) {
-	return newBroadcastSender(nonceExName, msg)
+func NewNonceAnnouncer() (Sender, error) {
+	return newBroadcastSender(nonceExName)
 }
 
 // NewSnReceiver returns a new sn receiver
@@ -72,13 +72,13 @@ func NewNonceReceiver() (Receiver, error) {
 }
 
 // NewSendSnSender returns a new 'send sn' sender
-func NewSendSnSender(msg *client.Message) (Sender, error) {
-	return newPeerSender(sendSnQName, msg)
+func NewSendSnSender() (Sender, error) {
+	return newPeerSender(sendSnQName)
 }
 
 // NewJoinSender returns a new 'join' sender
-func NewJoinSender(msg *client.Message) (Sender, error) {
-	return newPeerSender(joinQName, msg)
+func NewJoinSender() (Sender, error) {
+	return newPeerSender(joinQName)
 }
 
 // NewSendSnReceiver returns a new 'send sn' receiver
@@ -91,7 +91,7 @@ func NewJoinReceiver() (Receiver, error) {
 	return newPeerReceiver(joinQName, joinConsumerName)
 }
 
-func newBroadcastSender(exName string, msg *client.Message) (Sender, error) {
+func newBroadcastSender(exName string) (Sender, error) {
 	bp := client.BroadCastPublish{
 		URI:            config.MessageServerHost,
 		ExchangeName:   exName,
@@ -105,7 +105,7 @@ func newBroadcastSender(exName string, msg *client.Message) (Sender, error) {
 		return nil, err
 	}
 
-	return &send{publisher, msg}, nil
+	return &send{p: publisher}, nil
 }
 
 func newBroadcastReceiver(exName, qName, consumerName string) (Receiver, error) {
@@ -133,7 +133,7 @@ func newBroadcastReceiver(exName, qName, consumerName string) (Receiver, error) 
 	return &receive{sub, ctx, nil}, nil
 }
 
-func newPeerSender(qName string, msg *client.Message) (Sender, error) {
+func newPeerSender(qName string) (Sender, error) {
 	ps := client.PeerSend{
 		URI:         config.MessageServerHost,
 		QueueName:   qName,
@@ -148,7 +148,7 @@ func newPeerSender(qName string, msg *client.Message) (Sender, error) {
 		return nil, err
 	}
 
-	return &send{publisher, msg}, nil
+	return &send{p: publisher}, nil
 }
 
 func newPeerReceiver(qName, consumerName string) (Receiver, error) {

@@ -3,5 +3,5 @@ github.com/hashicorp/errwrap v1.0.0 h1:hLrqtEDnRye3+sgx6z4qVLNuviH3MR5aQ0ykNJa/U
 github.com/hashicorp/errwrap v1.0.0/go.mod h1:YH+1FKiLXxHSkmPseP+kNlulaMuP3n2brvKWEqk/Jc4=
 github.com/hashicorp/go-multierror v1.0.0 h1:iVjPR7a6H0tWELX5NxNe7bYopibicUzc7uPribsnS6o=
 github.com/hashicorp/go-multierror v1.0.0/go.mod h1:dHtQlpGsu+cZNNAkkCN/P3hoUDHhCYQXV3UM06sGGrk=
-github.com/sauravgsh16/message-server v0.0.0-20191230205451-de9cdb2ea9d7 h1:y8SWb8XWmE7wktayaxFHqc1ADrXcrTjgoAe9ayqz6Mw=
-github.com/sauravgsh16/message-server v0.0.0-20191230205451-de9cdb2ea9d7/go.mod h1:dNGQPttl5p8vFRs69/uMd9SvY8SJ3Kju48jnZav+0f4=
+github.com/sauravgsh16/message-server v0.0.0-20200103172051-170a539b5a6a h1:4FPCnxBKqMwmY1Y61DUUmHrIJ9M+WYOoK36Agnrgulg=
+github.com/sauravgsh16/message-server v0.0.0-20200103172051-170a539b5a6a/go.mod h1:dNGQPttl5p8vFRs69/uMd9SvY8SJ3Kju48jnZav+0f4=
