@@ -127,7 +127,6 @@ TODO:
 
 Member
 
-DONE:
     1) Listen for announceSn
     2) Listen for Vin certs
     4) Send Join
@@ -137,15 +136,18 @@ DONE:
         Wait till timeout for certificates
     6) Send Rekey - as soon as node is up
     7) Send Nonce
-
-    8)  Provision to receive all Nonces. Need to decide on dealine for wait time.
+    8) Provision to receive all Nonces. Need to decide on dealine for wait time.
     9) Create Sv
 
 
-General TODO:
+General
+
+TODO:
     1) Find way to set VIN in domain
-    2) Clear nonceAll for member ecu when it receives annonceSn or rekey
-    3) Clear nonceAll for leader when it receiver rekey
+    
+DONE:
+    1) Clear nonceAll for member ecu when it receives annonceSn or rekey
+    2) Clear nonceAll for leader when it receives rekey
 
 Doubts:
     1) What to do when we receive announce Vin ( {nl_nonce||nl_cert} )

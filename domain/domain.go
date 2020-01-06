@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	uuid "github.com/satori/go.uuid"
+	"github.com/gofrs/uuid"
 
 	"github.com/sauravgsh16/ecu/config"
 )

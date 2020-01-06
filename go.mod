@@ -3,8 +3,7 @@ module github.com/sauravgsh16/ecu
 go 1.13
 
 require (
+	github.com/gofrs/uuid v3.2.0+incompatible
 	github.com/hashicorp/go-multierror v1.0.0
 	github.com/sauravgsh16/message-server v0.0.0-20200103172051-170a539b5a6a
-	github.com/streadway/amqp v0.0.0-20190827072141-edfb9018d271 // indirect
-	golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553 // indirect
 )

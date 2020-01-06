@@ -19,18 +19,24 @@ const (
 	errJoinRegister       = "failed to register Join handler"
 
 	// Key Names
-	appKey = "ApplicationID"
+	appKey      = "ApplicationID"
+	contentType = "ContentType"
 )
 
 // Leader interface
 type Leader interface {
 	AnnounceSn() error
 	AnnounceVin() error
+	AnnounceNonce() error
 	SendSn(string)
 }
 
 // Member interface
-type Member interface{}
+type Member interface {
+	AnnounceNonce() error
+	AnnounceRekey() error
+	SendJoin(id string)
+}
 
 type listenerch struct {
 	name string
@@ -203,16 +209,18 @@ func (e *ecuService) listen() {
 			for i := range e.incoming {
 				switch i.name {
 				case config.Sn:
-					fmt.Printf("Received Sn: %+v", i.msg)
+					e.domain.ClearNonceTable()
+					go e.handleAnnounceSn(i.msg)
 
 				case config.Vin:
-					fmt.Printf("Received Vin: %+v", i.msg)
+					go e.handleAnnounceVin(i.msg)
 
 				case config.Rekey:
-					fmt.Printf("Received Rekey: %+v", i.msg)
+					e.domain.ClearNonceTable()
+					go e.AnnounceSn()
 
 				case config.Nonce:
-					fmt.Printf("Received Nonce: %+v", i.msg)
+					go e.handleReceiveNonce(i.msg)
 
 				default:
 					e.p2pincoming <- i
@@ -237,6 +245,36 @@ func (e *ecuService) aggregateCertNone() ([]byte, error) {
 	}
 
 	return buf.Bytes(), err
+}
+
+func (e *ecuService) AnnounceNonce() error {
+	nonce := e.domain.GetNonce()
+	msg := e.generateMessage(nonce)
+	msg.Metadata[contentType] = "nonce"
+	msg.Metadata[appKey] = e.domain.ID
+
+	h, ok := e.broadcasters[config.Nonce]
+	if !ok {
+		return fmt.Errorf("announce nonce handler not found")
+	}
+	if err := h.Send(msg); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (e *ecuService) handleReceiveNonce(msg *client.Message) error {
+	ctype, err := msg.Metadata.Verify(contentType)
+	if err != nil && ctype != "nonce" {
+		return fmt.Errorf("invalid content type")
+	}
+
+	appID, err := msg.Metadata.Verify(appKey)
+	if err != nil {
+		return fmt.Errorf("application id not found")
+	}
+
+	return e.domain.AddToNonceTable(appID, msg.Payload)
 }
 
 // NewLeader returns a new leader ecu

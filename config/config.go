@@ -15,5 +15,5 @@ const (
 	Rekey  = "REKEY"
 	Nonce  = "NONCE"
 	SendSn = "SENDSN"
-	Join   = "Join"
+	Join   = "JOIN"
 )

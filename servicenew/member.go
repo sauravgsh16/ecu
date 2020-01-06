@@ -5,7 +5,9 @@ import (
 	"fmt"
 
 	"github.com/sauravgsh16/ecu/client"
+	"github.com/sauravgsh16/ecu/config"
 	"github.com/sauravgsh16/ecu/handler"
+	"github.com/sauravgsh16/ecu/util"
 )
 
 func (e *ecuService) SendJoin(id string) {
@@ -28,16 +30,30 @@ func (e *ecuService) SendJoin(id string) {
 	}
 }
 
-func (e *ecuService) AnnounceRekey() {}
+func (e *ecuService) AnnounceRekey() error {
+	e.domain.ClearNonceTable()
 
-// This needs to be added to leader interface too
-func (e *ecuService) AnnounceNonce() {}
+	hashSn := util.GenerateHash([]byte(e.domain.GetSn()))
+	rkmsg := e.generateMessage([]byte(hashSn))
+	rkmsg.Metadata[contentType] = "rekey"
 
-func (e *ecuService) handleAnnounceVin() {
+	h, ok := e.broadcasters[config.Rekey]
+	if !ok {
+		return fmt.Errorf("announce rekey handler not found")
+	}
+
+	if err := h.Send(rkmsg); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (e *ecuService) handleAnnounceVin(msg *client.Message) {
 
 	// TODO : ******************
 
 	fmt.Println("Not sure what needs to done here")
+	fmt.Printf("Printing the received message: %+v\n", msg)
 
 	// TODO : ******************
 

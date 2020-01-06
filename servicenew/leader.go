@@ -5,7 +5,7 @@ import (
 	"io/ioutil"
 	"path/filepath"
 
-	uuid "github.com/satori/go.uuid"
+	"github.com/gofrs/uuid"
 
 	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
@@ -49,7 +49,7 @@ func (e *ecuService) AnnounceVin() error {
 
 	// TODO: standardize message format for all message types
 	msg := e.generateMessage(payload)
-	msg.Metadata["ContentType"] = "vincert"
+	msg.Metadata[contentType] = "vinCert"
 
 	if err := h.Send(msg); err != nil {
 		return err
