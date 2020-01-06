@@ -108,16 +108,16 @@ func (e *Ecu) generateNonce() error {
 	return nil
 }
 
-// ClearNonce clears the nonce table
-func (e *Ecu) ClearNonce() {
+// ClearNonceTable clears the nonce table
+func (e *Ecu) ClearNonceTable() {
 	e.nonceMux.Lock()
 	defer e.nonceMux.Unlock()
 
 	e.nonceAll = make(map[string][]byte)
 }
 
-// AddNonce adds entry in the nonce map
-func (e *Ecu) AddNonce(id string, nonce []byte) error {
+// AddToNonceTable adds entry in the nonce map
+func (e *Ecu) AddToNonceTable(id string, nonce []byte) error {
 	if len(nonce) > noncesize {
 		return errNonceSizeInvalid
 	}
@@ -146,6 +146,11 @@ func (e *Ecu) GenerateSn() error {
 
 	copy(e.sn, []byte(sn))
 	return nil
+}
+
+// GetNonce returns the ecu nonce
+func (e *Ecu) GetNonce() []byte {
+	return e.nonce
 }
 
 // GetSn returns the Ecu Sn string

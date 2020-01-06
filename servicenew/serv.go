@@ -232,7 +232,7 @@ func (e *ecuService) aggregateCertNone() ([]byte, error) {
 		}
 	}
 
-	if _, wErr := buf.Write(e.domain.Nonce); wErr != nil {
+	if _, wErr := buf.Write(e.domain.GetNonce()); wErr != nil {
 		err = multierror.Append(err, wErr)
 	}
 
