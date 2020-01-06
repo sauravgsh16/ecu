@@ -2,6 +2,12 @@ package client
 
 import (
 	"context"
+	"errors"
+)
+
+var (
+	errKeyNotFound = errors.New("Not Found")
+	errInvalidType = errors.New("Type Invalid")
 )
 
 // Payload represents actual bytes
@@ -22,6 +28,20 @@ func (m Metadata) Get(key string) interface{} {
 		return ""
 	}
 	return val
+}
+
+// Verify key data valid
+func (m Metadata) Verify(key string) (string, error) {
+	v, ok := m[key]
+	if !ok {
+		return "", errKeyNotFound
+	}
+
+	val, ok := v.(string)
+	if !ok {
+		return "", errInvalidType
+	}
+	return val, nil
 }
 
 // Message is a wrapper on the actual payload

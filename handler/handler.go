@@ -73,13 +73,13 @@ func NewNonceReceiver() (Receiver, error) {
 }
 
 // NewSendSnSender returns a new 'send sn' sender
-func NewSendSnSender() (Sender, error) {
-	return newPeerSender(sendSnQName, config.SendSn)
+func NewSendSnSender(appID string) (Sender, error) {
+	return newPeerSender(sendSnQName, config.SendSn+appID)
 }
 
 // NewJoinSender returns a new 'join' sender
-func NewJoinSender() (Sender, error) {
-	return newPeerSender(joinQName, config.Join)
+func NewJoinSender(appID string) (Sender, error) {
+	return newPeerSender(joinQName, config.Join+appID)
 }
 
 // NewSendSnReceiver returns a new 'send sn' receiver

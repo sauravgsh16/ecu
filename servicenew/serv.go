@@ -1,21 +1,33 @@
 package servicenew
 
 import (
+	"bytes"
 	"fmt"
 	"sync"
-
-	"github.com/sauravgsh16/ecu/config"
 
 	"github.com/hashicorp/go-multierror"
 
 	"github.com/sauravgsh16/ecu/client"
-
+	"github.com/sauravgsh16/ecu/config"
 	"github.com/sauravgsh16/ecu/domain"
 	"github.com/sauravgsh16/ecu/handler"
 )
 
+const (
+	errInvalidJoinRequest = "join request sent - invalid"
+	errSendSnRegister     = "failed to register Send Sn handler"
+	errJoinRegister       = "failed to register Join handler"
+
+	// Key Names
+	appKey = "ApplicationID"
+)
+
 // Leader interface
-type Leader interface{}
+type Leader interface {
+	AnnounceSn() error
+	AnnounceVin() error
+	SendSn(string)
+}
 
 // Member interface
 type Member interface{}
@@ -34,11 +46,18 @@ type incoming struct {
 }
 
 type ecuService struct {
-	domain    *domain.Ecu
-	senders   map[string]handler.Sender
-	receivers map[string]*listenerch
-	mux       sync.RWMutex
-	incoming  chan *incoming
+	domain       *domain.Ecu
+	broadcasters map[string]handler.Sender
+	subscribers  map[string]*listenerch
+	senders      map[string]handler.Sender
+	receivers    map[string]*listenerch
+	certs        map[string][]byte
+	certLoaded   bool
+	certMux      sync.Mutex
+	mux          sync.RWMutex
+	incoming     chan *incoming
+	p2pincoming  chan *incoming
+	done         chan interface{}
 }
 
 func newService(c *ecuConfig) (*ecuService, error) {
@@ -48,38 +67,81 @@ func newService(c *ecuConfig) (*ecuService, error) {
 	}
 
 	e := &ecuService{
-		domain:    d,
-		senders:   make(map[string]handler.Sender),
-		receivers: make(map[string]*listenerch),
-		incoming:  make(chan *incoming),
+		domain:       d,
+		broadcasters: make(map[string]handler.Sender),
+		subscribers:  make(map[string]*listenerch),
+		senders:      make(map[string]handler.Sender),
+		receivers:    make(map[string]*listenerch),
+		incoming:     make(chan *incoming),
+		p2pincoming:  make(chan *incoming),
+		done:         make(chan interface{}),
+	}
+	if c.leader {
+		if err := e.loadCerts(); err != nil {
+			return nil, err
+		}
+
+		if err := e.domain.GenerateSn(); err != nil {
+			return nil, err
+		}
 	}
 
 	e.mux.Lock()
 	defer e.mux.Unlock()
 
-	// Register senders
-	for _, h := range c.senders {
-		sender, err := h()
+	// Register broadcasters
+	for _, h := range c.broadcasters {
+		b, err := h()
 		if err != nil {
 			return nil, err
 		}
-		e.senders[sender.GetName()] = sender
+		e.broadcasters[b.GetName()] = b
 	}
 
 	// Register receivers
-	for _, h := range c.receivers {
-		receiver, err := h()
+	for _, h := range c.subscribers {
+		s, err := h()
 		if err != nil {
 			return nil, err
 		}
-		e.receivers[receiver.GetName()] = &listenerch{
-			h:    receiver,
+		e.receivers[s.GetName()] = &listenerch{
+			h:    s,
 			done: make(chan interface{}),
-			name: receiver.GetName(),
+			name: s.GetName(),
 		}
 	}
 
+	if err := e.startreceivers(); err != nil {
+		return nil, err
+	}
+
+	e.startlisteners()
+
+	go e.listen()
+	go e.handleIncoming()
+
 	return e, nil
+}
+
+func (e *ecuService) handleIncoming() {
+	for {
+		select {
+		case <-e.done:
+			return
+		case i := <-e.p2pincoming:
+			switch i.name {
+
+			case config.Join:
+				go e.handleJoin(i.msg)
+
+			case config.SendSn:
+				go e.handleSn(i.msg)
+
+			default:
+				panic("unknown type")
+			}
+		}
+	}
 }
 
 func (e *ecuService) startreceivers() error {
@@ -89,7 +151,7 @@ func (e *ecuService) startreceivers() error {
 		return nil
 	}
 
-	for _, r := range e.receivers {
+	for _, r := range e.subscribers {
 		ch, er := r.h.StartReceiver(r.done)
 		if er != nil {
 			err = multierror.Append(err, er)
@@ -103,7 +165,7 @@ func (e *ecuService) startreceivers() error {
 func (e *ecuService) startlisteners() {
 	var wg sync.WaitGroup
 
-	wg.Add(len(e.receivers))
+	wg.Add(len(e.subscribers))
 
 	multiplex := func(l *listenerch) {
 		defer wg.Done()
@@ -116,6 +178,10 @@ func (e *ecuService) startlisteners() {
 				e.incoming <- &incoming{l.name, msg}
 			}
 		}
+	}
+
+	for _, s := range e.subscribers {
+		go multiplex(s)
 	}
 
 	for _, r := range e.receivers {
@@ -134,26 +200,43 @@ func (e *ecuService) closeReceivers() {}
 func (e *ecuService) listen() {
 	go func() {
 		for {
-			for m := range e.incoming {
-				switch m.name {
+			for i := range e.incoming {
+				switch i.name {
 				case config.Sn:
-					fmt.Printf("Received Sn: %s", m.msg)
+					fmt.Printf("Received Sn: %+v", i.msg)
+
 				case config.Vin:
-					fmt.Printf("Received Vin: %s", m.msg)
+					fmt.Printf("Received Vin: %+v", i.msg)
+
 				case config.Rekey:
-					fmt.Printf("Received Rekey: %s", m.msg)
+					fmt.Printf("Received Rekey: %+v", i.msg)
+
 				case config.Nonce:
-					fmt.Printf("Received Nonce: %s", m.msg)
-				case config.SendSn:
-					fmt.Printf("Received SendSn: %s", m.msg)
-				case config.Join:
-					fmt.Printf("Received Join: %s", m.msg)
+					fmt.Printf("Received Nonce: %+v", i.msg)
+
 				default:
-					// TODO: handle normal message communication
+					e.p2pincoming <- i
 				}
 			}
 		}
 	}()
+}
+
+func (e *ecuService) aggregateCertNone() ([]byte, error) {
+	var err error
+	var buf bytes.Buffer
+
+	for _, c := range e.domain.Certs {
+		if _, wErr := buf.Write(c); wErr != nil {
+			err = multierror.Append(err, wErr)
+		}
+	}
+
+	if _, wErr := buf.Write(e.domain.Nonce); wErr != nil {
+		err = multierror.Append(err, wErr)
+	}
+
+	return buf.Bytes(), err
 }
 
 // NewLeader returns a new leader ecu
