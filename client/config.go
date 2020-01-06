@@ -12,7 +12,6 @@ const (
 
 // BroadCastPublish struct
 type BroadCastPublish struct {
-	URI            string
 	ExchangeName   string
 	QueueName      string
 	ExchangeNoWait bool
@@ -22,7 +21,7 @@ type BroadCastPublish struct {
 
 // Marshal data to Config struct
 func (bp BroadCastPublish) Marshal() Config {
-	c := NewBareConfig(bp.URI, broadcastExType)
+	c := NewBareConfig(broadcastExType)
 	c.Exchange.Type = broadcastExType
 
 	v := reflect.ValueOf(bp)
@@ -48,7 +47,6 @@ func (bp BroadCastPublish) Marshal() Config {
 
 // BroadcastSubscribe struct
 type BroadcastSubscribe struct {
-	URI            string
 	ExchangeName   string
 	QueueName      string
 	ConsumerName   string
@@ -62,7 +60,7 @@ type BroadcastSubscribe struct {
 
 // Marshal data to Config struct
 func (bs BroadcastSubscribe) Marshal() Config {
-	c := NewBareConfig(bs.URI, broadcastExType)
+	c := NewBareConfig(broadcastExType)
 	c.Exchange.Type = broadcastExType
 
 	v := reflect.ValueOf(bs)
@@ -99,7 +97,6 @@ func (bs BroadcastSubscribe) Marshal() Config {
 
 // PeerSend struct
 type PeerSend struct {
-	URI         string
 	QueueName   string
 	QueueNoWait bool
 	Immediate   bool
@@ -107,7 +104,7 @@ type PeerSend struct {
 
 // Marshal data to Config struct
 func (s PeerSend) Marshal() Config {
-	c := NewBareConfig(s.URI, p2pExType)
+	c := NewBareConfig(p2pExType)
 
 	v := reflect.ValueOf(s)
 	t := v.Type()
@@ -128,7 +125,6 @@ func (s PeerSend) Marshal() Config {
 
 // PeerReceive struct
 type PeerReceive struct {
-	URI            string
 	QueueName      string
 	ConsumerName   string
 	ConsumerNoAck  bool
@@ -137,7 +133,7 @@ type PeerReceive struct {
 
 // Marshal data to Config struct
 func (r PeerReceive) Marshal() Config {
-	c := NewBareConfig(r.URI, p2pExType)
+	c := NewBareConfig(p2pExType)
 
 	v := reflect.ValueOf(r)
 	t := v.Type()
@@ -197,7 +193,6 @@ type queueBindConfig struct {
 
 // Config struct
 type Config struct {
-	URI          string
 	Type         string // Defines the exchange type
 	Exchange     exchangeConfig
 	Publish      publishConfig
@@ -208,9 +203,8 @@ type Config struct {
 }
 
 // NewBareConfig returns a new confic struct
-func NewBareConfig(uri, t string) Config {
+func NewBareConfig(t string) Config {
 	return Config{
-		URI:          uri,
 		Type:         t,
 		Exchange:     exchangeConfig{},
 		Publish:      publishConfig{},
@@ -223,10 +217,6 @@ func NewBareConfig(uri, t string) Config {
 
 // Validate the config
 func (c Config) Validate() error {
-	if c.URI == "" {
-		return errors.New("uri cannot be empty")
-	}
-
 	if c.Marshaller == nil {
 		return errors.New("missing message marshaller")
 	}

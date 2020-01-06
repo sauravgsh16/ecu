@@ -13,13 +13,12 @@ import (
 )
 
 const (
-	// SnSize byte size
-	SnSize = 16
-
 	// Leader ECU type
 	Leader = iota
 	// Member ECU type
 	Member
+	// SnSize byte size
+	SnSize = 16
 )
 
 var (
@@ -167,6 +166,4 @@ func NewMessage() *Message {
 	}
 }
 
-func (m *Message) CreateNonce() {
-
-}
+func (m *Message) CreateNonce() {}

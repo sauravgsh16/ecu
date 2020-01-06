@@ -32,7 +32,7 @@ func NewSubscriber(c Config) (Subscriber, error) {
 		return nil, err
 	}
 
-	cw, err := newConnection(c)
+	cw, err := newConnection()
 	if err != nil {
 		return nil, err
 	}

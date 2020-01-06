@@ -8,7 +8,6 @@ import (
 
 	"github.com/sauravgsh16/ecu/config"
 	"github.com/sauravgsh16/ecu/domain"
-	"github.com/sauravgsh16/ecu/request"
 	"github.com/sauravgsh16/ecu/util"
 )
 
@@ -90,10 +89,12 @@ func (e *ecuService) loadCerts() error {
 	return nil
 }
 
+/*
 func (e *ecuService) HandleJoin(req *request.JoinRequest) error {
 
 	return nil
 }
+*/
 
 // TODO : FIND WAY TO INITIALIZE HANDLERS
 // Need to decide how many handler initializations will be required

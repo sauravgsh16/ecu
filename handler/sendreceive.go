@@ -10,25 +10,37 @@ import (
 // Sender interface
 type Sender interface {
 	Send(msg *client.Message) error
+	GetName() string
 }
 
 // Receiver interface
 type Receiver interface {
 	StartReceiver(chan interface{}) (chan *client.Message, error)
+	GetName() string
 }
 
 type send struct {
-	p client.Publisher
+	name string
+	p    client.Publisher
 }
 
 func (s *send) Send(msg *client.Message) error {
 	return s.p.Publish(msg)
 }
 
+func (s *send) GetName() string {
+	return s.name
+}
+
 type receive struct {
-	s   client.Subscriber
-	ctx context.Context
-	out chan *client.Message
+	name string
+	s    client.Subscriber
+	ctx  context.Context
+	out  chan *client.Message
+}
+
+func (r *receive) GetName() string {
+	return r.name
 }
 
 func (r *receive) StartReceiver(done chan interface{}) (chan *client.Message, error) {

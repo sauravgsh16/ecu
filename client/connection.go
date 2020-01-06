@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sauravgsh16/ecu/config"
+
 	"github.com/sauravgsh16/message-server/qclient"
 )
 
@@ -14,28 +16,46 @@ const (
 	timeoutInterval = 30
 )
 
+var (
+	c    conn
+	once sync.Once
+)
+
 type connectionWrapper struct {
-	config Config
-	conn   *qclient.Connection
-	mux    sync.Mutex
-	closed bool
-	pubWG  sync.WaitGroup
-	subWG  sync.WaitGroup
+	conn      *qclient.Connection
+	mux       sync.Mutex
+	closed    bool
+	pubWG     sync.WaitGroup
+	subWG     sync.WaitGroup
+	connected bool
 }
 
-func newConnection(c Config) (*connectionWrapper, error) {
-	cw := &connectionWrapper{
-		config: c,
-	}
+type conn struct {
+	client      *qclient.Connection
+	initialized bool
+}
 
-	if err := cw.connect(); err != nil {
+func (c *conn) initialize() error {
+	return c.connect()
+}
+
+func newConnection() (*connectionWrapper, error) {
+	var err error
+	once.Do(func() {
+		err = c.initialize()
+		c.initialized = true
+	})
+	if err != nil {
 		return nil, err
 	}
+	if !c.initialized {
+		return nil, errors.New("uninitialized connected")
+	}
 
-	return cw, nil
+	return &connectionWrapper{conn: c.client, connected: true}, nil
 }
 
-func (cw *connectionWrapper) connect() error {
+func (c *conn) connect() error {
 	connected := make(chan *qclient.Connection)
 	ticker := time.NewTicker(tickerInterval * time.Second)
 
@@ -44,7 +64,7 @@ func (cw *connectionWrapper) connect() error {
 		for {
 			select {
 			case <-ticker.C:
-				conn, err := qclient.Dial(cw.config.URI)
+				conn, err := qclient.Dial(config.MessageServerHost)
 				if err != nil {
 					fmt.Printf("Error connecting to message server: %s", err.Error())
 					continue
@@ -58,12 +78,12 @@ func (cw *connectionWrapper) connect() error {
 			}
 		}
 	}()
-	conn, ok := <-connected
+	var ok bool
+	c.client, ok = <-connected
 	if !ok {
 		return errors.New("failed to connect to message server")
 	}
 	close(connected)
-	cw.conn = conn
 	return nil
 }
 
@@ -82,6 +102,10 @@ func (cw *connectionWrapper) Close() error {
 	// Wait for subscriber to close
 	cw.subWG.Wait()
 
+	cw.mux.Lock()
+	defer cw.mux.Unlock()
+
 	cw.closed = true
+	cw.connected = false
 	return nil
 }

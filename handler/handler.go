@@ -3,8 +3,9 @@ package handler
 import (
 	"context"
 
-	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
+
+	"github.com/sauravgsh16/ecu/client"
 )
 
 // Broadcaster interface
@@ -33,67 +34,66 @@ func (sr peer) Peer() bool { return true }
 
 // NewSnAnnouncer returns a new Sn broadcaster
 func NewSnAnnouncer() (Sender, error) {
-	return newBroadcastSender(snExName)
+	return newBroadcastSender(snExName, config.Sn)
 }
 
 // NewVinAnnouncer returns a new Vin broadcaster
 func NewVinAnnouncer() (Sender, error) {
-	return newBroadcastSender(vinExName)
+	return newBroadcastSender(vinExName, config.Vin)
 }
 
 // NewRekeyAnnouncer returns a new start Rekey broadcaster
 func NewRekeyAnnouncer() (Sender, error) {
-	return newBroadcastSender(rkExName)
+	return newBroadcastSender(rkExName, config.Rekey)
 }
 
 // NewNonceAnnouncer returns a new Nonce broadcaster
 func NewNonceAnnouncer() (Sender, error) {
-	return newBroadcastSender(nonceExName)
+	return newBroadcastSender(nonceExName, config.Nonce)
 }
 
 // NewSnReceiver returns a new sn receiver
 func NewSnReceiver() (Receiver, error) {
-	return newBroadcastReceiver(snExName, snQName, snConsumerName)
+	return newBroadcastReceiver(snExName, snQName, snConsumerName, config.Sn)
 }
 
 // NewVinReceiver returns a new Vin receiver
 func NewVinReceiver() (Receiver, error) {
-	return newBroadcastReceiver(vinExName, vinQName, vinConsumerName)
+	return newBroadcastReceiver(vinExName, vinQName, vinConsumerName, config.Vin)
 }
 
 // NewRekeyReceiver returns a new start rekey receiver
 func NewRekeyReceiver() (Receiver, error) {
-	return newBroadcastReceiver(rkExName, rkQName, rkConsumerName)
+	return newBroadcastReceiver(rkExName, rkQName, rkConsumerName, config.Rekey)
 }
 
 // NewNonceReceiver returns a new nonce receiver
 func NewNonceReceiver() (Receiver, error) {
-	return newBroadcastReceiver(nonceExName, nonceQName, nonceConsumerName)
+	return newBroadcastReceiver(nonceExName, nonceQName, nonceConsumerName, config.Nonce)
 }
 
 // NewSendSnSender returns a new 'send sn' sender
 func NewSendSnSender() (Sender, error) {
-	return newPeerSender(sendSnQName)
+	return newPeerSender(sendSnQName, config.SendSn)
 }
 
 // NewJoinSender returns a new 'join' sender
 func NewJoinSender() (Sender, error) {
-	return newPeerSender(joinQName)
+	return newPeerSender(joinQName, config.Join)
 }
 
 // NewSendSnReceiver returns a new 'send sn' receiver
 func NewSendSnReceiver() (Receiver, error) {
-	return newPeerReceiver(sendSnQName, sendSnConsumerName)
+	return newPeerReceiver(sendSnQName, sendSnConsumerName, config.SendSn)
 }
 
 // NewJoinReceiver returns a new 'join' receiver
 func NewJoinReceiver() (Receiver, error) {
-	return newPeerReceiver(joinQName, joinConsumerName)
+	return newPeerReceiver(joinQName, joinConsumerName, config.Join)
 }
 
-func newBroadcastSender(exName string) (Sender, error) {
+func newBroadcastSender(exName, senderName string) (Sender, error) {
 	bp := client.BroadCastPublish{
-		URI:            config.MessageServerHost,
 		ExchangeName:   exName,
 		ExchangeNoWait: pubNoWait,
 		Immediate:      immediate,
@@ -105,12 +105,11 @@ func newBroadcastSender(exName string) (Sender, error) {
 		return nil, err
 	}
 
-	return &send{p: publisher}, nil
+	return &send{p: publisher, name: senderName}, nil
 }
 
-func newBroadcastReceiver(exName, qName, consumerName string) (Receiver, error) {
+func newBroadcastReceiver(exName, qName, consumerName, receiverName string) (Receiver, error) {
 	bs := client.BroadcastSubscribe{
-		URI:            config.MessageServerHost,
 		ExchangeName:   exName,
 		ExchangeNoWait: subNoWait,
 		QueueName:      qName,
@@ -130,12 +129,15 @@ func newBroadcastReceiver(exName, qName, consumerName string) (Receiver, error) 
 	}
 
 	ctx := context.Background()
-	return &receive{sub, ctx, nil}, nil
+	return &receive{
+		s:    sub,
+		ctx:  ctx,
+		name: receiverName,
+	}, nil
 }
 
-func newPeerSender(qName string) (Sender, error) {
+func newPeerSender(qName, senderName string) (Sender, error) {
 	ps := client.PeerSend{
-		URI:         config.MessageServerHost,
 		QueueName:   qName,
 		QueueNoWait: queueNoWait,
 		Immediate:   immediate,
@@ -148,12 +150,11 @@ func newPeerSender(qName string) (Sender, error) {
 		return nil, err
 	}
 
-	return &send{p: publisher}, nil
+	return &send{p: publisher, name: senderName}, nil
 }
 
-func newPeerReceiver(qName, consumerName string) (Receiver, error) {
+func newPeerReceiver(qName, consumerName, receiverName string) (Receiver, error) {
 	pr := client.PeerReceive{
-		URI:            config.MessageServerHost,
 		QueueName:      qName,
 		ConsumerName:   consumerName,
 		ConsumerNoAck:  consumerNoAck,
@@ -167,5 +168,9 @@ func newPeerReceiver(qName, consumerName string) (Receiver, error) {
 	}
 
 	ctx := context.Background()
-	return &receive{receiver, ctx, nil}, nil
+	return &receive{
+		s:    receiver,
+		ctx:  ctx,
+		name: receiverName,
+	}, nil
 }

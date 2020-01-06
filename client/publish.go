@@ -31,7 +31,7 @@ func NewPublisher(c Config) (Publisher, error) {
 		return nil, err
 	}
 
-	cw, err := newConnection(c)
+	cw, err := newConnection()
 	if err != nil {
 		return nil, err
 	}
