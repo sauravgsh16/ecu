@@ -1,16 +1,15 @@
 package main
 
 import (
-	"fmt"
+	"log"
 
-	"github.com/sauravgsh16/ecu/service"
+	"github.com/sauravgsh16/ecu/controller"
 )
 
 func main() {
-	l, err := service.NewLeader()
+	c, err := controller.New(0)
 	if err != nil {
-		panic(err)
+		log.Fatalf(err.Error())
 	}
-
-	fmt.Printf("%+v", l)
+	c.Initiate()
 }

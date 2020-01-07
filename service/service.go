@@ -33,9 +33,14 @@ type Leader interface {
 
 // Member interface
 type Member interface {
-	AnnounceNonce() error
 	AnnounceRekey() error
+	AnnounceNonce() error
 	SendJoin(id string)
+}
+
+// ECU interface
+type ECU interface {
+	AnnounceNonce() error
 }
 
 type listenerch struct {
@@ -202,6 +207,9 @@ func (e *ecuService) startlisteners() {
 
 // TODO
 func (e *ecuService) closeReceivers() {}
+
+// TODO
+func (e *ecuService) Close() {}
 
 func (e *ecuService) listen() {
 	go func() {

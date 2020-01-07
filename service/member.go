@@ -7,7 +7,6 @@ import (
 	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
 	"github.com/sauravgsh16/ecu/handler"
-	"github.com/sauravgsh16/ecu/util"
 )
 
 func (e *ecuService) SendJoin(id string) {
@@ -33,8 +32,9 @@ func (e *ecuService) SendJoin(id string) {
 func (e *ecuService) AnnounceRekey() error {
 	e.domain.ClearNonceTable()
 
-	hashSn := util.GenerateHash([]byte(e.domain.GetSn()))
-	rkmsg := e.generateMessage([]byte(hashSn))
+	empty := make([]byte, 8)
+
+	rkmsg := e.generateMessage(empty)
 	rkmsg.Metadata[contentType] = "rekey"
 
 	h, ok := e.broadcasters[config.Rekey]

@@ -19,8 +19,6 @@ const (
 	leader = iota
 	// Member ECU type
 	member
-	// SnSize byte size
-	SnSize = 16
 )
 
 const (
@@ -139,7 +137,7 @@ func (e *Ecu) GenerateSn() error {
 		return errResetSn
 	}
 
-	sn, err := GenerateRandom(SnSize)
+	sn, err := GenerateRandom(snsize)
 	if err != nil {
 		return err
 	}
