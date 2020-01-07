@@ -1,8 +1,8 @@
 package main
 
 import (
+	"fmt"
 	"log"
-	"time"
 
 	"github.com/sauravgsh16/ecu/controller"
 )
@@ -13,9 +13,14 @@ func main() {
 		log.Fatalf(err.Error())
 	}
 
-	after := time.After(5 * time.Second)
-	select {
-	case <-after:
-		c.Initiate()
-	}
+	fmt.Println("Started leader")
+
+	/*
+		after := time.After(5 * time.Second)
+		select {
+		case <-after:
+			c.Initiate()
+		}
+	*/
+	fmt.Printf("%#v\n", c)
 }

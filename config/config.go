@@ -6,7 +6,8 @@ var (
 )
 
 const (
-	MessageServerHost          = "tcp://localhost:9000"
+	MessageServerHost = "tcp://localhost:9000"
+	// TODO: Temp -- need to find better way to define directory location
 	DefaultCertificateLocation = "cert"
 
 	// Broadcaster and receiver names

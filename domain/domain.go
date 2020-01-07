@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
+	"os"
 	"path/filepath"
 	"sync"
 
@@ -64,9 +66,14 @@ func NewEcu(kind int) (*Ecu, error) {
 		sn:       make([]byte, snsize),
 		nonce:    make([]byte, noncesize),
 		nonceAll: make(map[string][]byte, 0),
-		CertLoc:  config.DefaultCertificateLocation,
 		Certs:    make(map[string][]byte, 0),
 	}
+	dir, err := os.Getwd()
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	e.CertLoc = filepath.Join(dir, "../../../", config.DefaultCertificateLocation)
+
 	if _, err := rand.Read(e.encKey); err != nil {
 		return nil, err
 	}
