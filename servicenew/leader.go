@@ -26,7 +26,7 @@ func (e *ecuService) AnnounceSn() error {
 	if err := h.Send(e.generateMessage([]byte(hashSn))); err != nil {
 		return err
 	}
-	return nil
+	return e.AnnounceVin()
 }
 
 func (e *ecuService) AnnounceVin() error {
