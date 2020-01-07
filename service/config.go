@@ -1,4 +1,4 @@
-package servicenew
+package service
 
 import (
 	"github.com/sauravgsh16/ecu/handler"

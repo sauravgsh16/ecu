@@ -1,130 +1,288 @@
 package service
 
 import (
+	"bytes"
 	"fmt"
-	"io/ioutil"
-	"path/filepath"
 	"sync"
 
+	"github.com/hashicorp/go-multierror"
+
+	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
 	"github.com/sauravgsh16/ecu/domain"
-	"github.com/sauravgsh16/ecu/util"
+	"github.com/sauravgsh16/ecu/handler"
 )
 
 const (
-	leader = iota
-	member
+	errInvalidJoinRequest = "join request sent - invalid"
+	errSendSnRegister     = "failed to register Send Sn handler"
+	errJoinRegister       = "failed to register Join handler"
 
-	initialized = 1
-	broadcast   = "fanout"
-	peer        = "direct"
+	// Key Names
+	appKey      = "ApplicationID"
+	contentType = "ContentType"
 )
 
-// Leader interface ....
+// Leader interface
 type Leader interface {
-	AnnounceSN() error
-	AnnounceVinCert() error
+	AnnounceSn() error
+	AnnounceVin() error
+	AnnounceNonce() error
+	SendSn(string)
 }
 
-// Member interface ....
-type Member interface{}
+// Member interface
+type Member interface {
+	AnnounceNonce() error
+	AnnounceRekey() error
+	SendJoin(id string)
+}
+
+type listenerch struct {
+	name string
+	ch   chan *client.Message
+	done chan interface{}
+	h    handler.Receiver
+	init bool
+}
+
+type incoming struct {
+	name string
+	msg  *client.Message
+}
 
 type ecuService struct {
-	domain   *domain.Ecu
-	SN       []byte
-	mux      sync.RWMutex
-	emitter  *broadcastSender
-	consumer *broadcastConsumer
-	certs    map[string][]byte
-	// TODO: Add senders and receivers
+	domain       *domain.Ecu
+	broadcasters map[string]handler.Sender
+	subscribers  map[string]*listenerch
+	senders      map[string]handler.Sender
+	receivers    map[string]*listenerch
+	certs        map[string][]byte
+	certLoaded   bool
+	certMux      sync.Mutex
+	mux          sync.RWMutex
+	incoming     chan *incoming
+	p2pincoming  chan *incoming
+	done         chan interface{}
 }
 
-func (e *ecuService) init() error {
-	if err := e.domain.GenerateSn(); err != nil {
-		return err
+func newService(c *ecuConfig) (*ecuService, error) {
+	d, err := domain.NewEcu(c.ecuType)
+	if err != nil {
+		return nil, err
 	}
 
-	e.mux.Lock()
-	defer e.mux.Unlock()
-
-	e.SN = []byte(e.domain.GetSn())
-
-	return nil
-}
-
-func (e *ecuService) AnnounceSN() error {
-	hashSn := util.GenerateHash(e.SN)
-
-	if err := e.emitter.broadcast([]byte(hashSn)); err != nil {
-		return err
+	e := &ecuService{
+		domain:       d,
+		broadcasters: make(map[string]handler.Sender),
+		subscribers:  make(map[string]*listenerch),
+		senders:      make(map[string]handler.Sender),
+		receivers:    make(map[string]*listenerch),
+		incoming:     make(chan *incoming),
+		p2pincoming:  make(chan *incoming),
+		done:         make(chan interface{}),
 	}
+	if c.leader {
+		if err := e.loadCerts(); err != nil {
+			return nil, err
+		}
 
-	return nil
-}
-
-func (e *ecuService) AnnounceVinCert() error {
-	if err := e.loadCerts(); err != nil {
-		return err
-	}
-
-	for _, v := range e.certs {
-		if err := e.emitter.broadcast(v); err != nil {
-			return err
+		if err := e.domain.GenerateSn(); err != nil {
+			return nil, err
 		}
 	}
-	return nil
-}
 
-func (e *ecuService) loadCerts() error {
 	e.mux.Lock()
 	defer e.mux.Unlock()
 
-	for _, c := range config.DefaultBroadCastCertificates {
-		b, err := ioutil.ReadFile(filepath.Join(config.DefaultCertificateLocation, c))
+	// Register broadcasters
+	for _, h := range c.broadcasters {
+		b, err := h()
 		if err != nil {
-			return fmt.Errorf("failed to load certificate: %s", err.Error())
+			return nil, err
 		}
-		e.certs[c] = b
+		e.broadcasters[b.GetName()] = b
 	}
-	return nil
-}
 
-/*
-func (e *ecuService) HandleJoin(req *request.JoinRequest) error {
+	// Register receivers
+	for _, h := range c.subscribers {
+		s, err := h()
+		if err != nil {
+			return nil, err
+		}
+		e.receivers[s.GetName()] = &listenerch{
+			h:    s,
+			done: make(chan interface{}),
+			name: s.GetName(),
+		}
+	}
 
-	return nil
-}
-*/
-
-// TODO : FIND WAY TO INITIALIZE HANDLERS
-// Need to decide how many handler initializations will be required
-
-// NewMember returns a new Member ECU
-func NewMember() (Member, error) {
-	d, err := domain.NewEcu(member)
-	if err != nil {
+	if err := e.startreceivers(); err != nil {
 		return nil, err
 	}
 
-	return &ecuService{
-		domain: d,
-		certs:  make(map[string][]byte, 0),
-	}, nil
+	e.startlisteners()
+
+	go e.listen()
+	go e.handleIncoming()
+
+	return e, nil
 }
 
-// NewLeader returns a new Leader ECU
+func (e *ecuService) handleIncoming() {
+	for {
+		select {
+		case <-e.done:
+			return
+		case i := <-e.p2pincoming:
+			switch i.name {
+
+			case config.Join:
+				go e.handleJoin(i.msg)
+
+			case config.SendSn:
+				go e.handleSn(i.msg)
+
+			default:
+				panic("unknown type")
+			}
+		}
+	}
+}
+
+func (e *ecuService) startreceivers() error {
+	var err error
+
+	if len(e.receivers) == 0 {
+		return nil
+	}
+
+	for _, r := range e.subscribers {
+		ch, er := r.h.StartReceiver(r.done)
+		if er != nil {
+			err = multierror.Append(err, er)
+		}
+		r.ch = ch
+		r.init = true
+	}
+	return nil
+}
+
+func (e *ecuService) startlisteners() {
+	var wg sync.WaitGroup
+
+	wg.Add(len(e.subscribers))
+
+	multiplex := func(l *listenerch) {
+		defer wg.Done()
+	loop:
+		for {
+			select {
+			case <-l.done:
+				break loop
+			case msg := <-l.ch:
+				e.incoming <- &incoming{l.name, msg}
+			}
+		}
+	}
+
+	for _, s := range e.subscribers {
+		go multiplex(s)
+	}
+
+	for _, r := range e.receivers {
+		go multiplex(r)
+	}
+
+	go func() {
+		wg.Wait()
+		close(e.incoming)
+	}()
+}
+
+// TODO
+func (e *ecuService) closeReceivers() {}
+
+func (e *ecuService) listen() {
+	go func() {
+		for {
+			for i := range e.incoming {
+				switch i.name {
+				case config.Sn:
+					e.domain.ClearNonceTable()
+					go e.handleAnnounceSn(i.msg)
+
+				case config.Vin:
+					go e.handleAnnounceVin(i.msg)
+
+				case config.Rekey:
+					e.domain.ClearNonceTable()
+					go e.AnnounceSn()
+
+				case config.Nonce:
+					go e.handleReceiveNonce(i.msg)
+
+				default:
+					e.p2pincoming <- i
+				}
+			}
+		}
+	}()
+}
+
+func (e *ecuService) aggregateCertNone() ([]byte, error) {
+	var err error
+	var buf bytes.Buffer
+
+	for _, c := range e.domain.Certs {
+		if _, wErr := buf.Write(c); wErr != nil {
+			err = multierror.Append(err, wErr)
+		}
+	}
+
+	if _, wErr := buf.Write(e.domain.GetNonce()); wErr != nil {
+		err = multierror.Append(err, wErr)
+	}
+
+	return buf.Bytes(), err
+}
+
+func (e *ecuService) AnnounceNonce() error {
+	nonce := e.domain.GetNonce()
+	msg := e.generateMessage(nonce)
+	msg.Metadata[contentType] = "nonce"
+	msg.Metadata[appKey] = e.domain.ID
+
+	h, ok := e.broadcasters[config.Nonce]
+	if !ok {
+		return fmt.Errorf("announce nonce handler not found")
+	}
+	if err := h.Send(msg); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (e *ecuService) handleReceiveNonce(msg *client.Message) error {
+	ctype, err := msg.Metadata.Verify(contentType)
+	if err != nil && ctype != "nonce" {
+		return fmt.Errorf("invalid content type")
+	}
+
+	appID, err := msg.Metadata.Verify(appKey)
+	if err != nil {
+		return fmt.Errorf("application id not found")
+	}
+
+	return e.domain.AddToNonceTable(appID, msg.Payload)
+}
+
+// NewLeader returns a new leader ecu
 func NewLeader() (Leader, error) {
-	d, err := domain.NewEcu(leader)
-	if err != nil {
-		return nil, err
-	}
-	l := &ecuService{
-		domain: d,
-		certs:  make(map[string][]byte, 0),
-	}
+	return newService(leaderConfig())
+}
 
-	if err := l.init(); err != nil {
-		return nil, err
-	}
-	return l, nil
+// NewMember returns a new member ecu
+func NewMember() (Member, error) {
+	return newService(memberConfig())
 }

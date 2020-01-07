@@ -3,11 +3,11 @@ package main
 import (
 	"fmt"
 
-	"github.com/sauravgsh16/ecu/servicenew"
+	"github.com/sauravgsh16/ecu/service"
 )
 
 func main() {
-	l, err := servicenew.NewLeader()
+	l, err := service.NewLeader()
 	if err != nil {
 		panic(err)
 	}
