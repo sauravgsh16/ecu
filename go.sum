@@ -1,3 +1,5 @@
+github.com/ar3s3ru/gobus v0.0.0-20160621170423-85118ec44ecf h1:qu1tmvUyvaZjPV+AKPtQBgA7CcuO3n0ZScYk1xxXjHA=
+github.com/ar3s3ru/gobus v0.0.0-20160621170423-85118ec44ecf/go.mod h1:RSU5ZMoBYphOp5e0vwelGb6d7YqfIPeBBuYsz1ZRiAk=
 github.com/boltdb/bolt v1.3.1/go.mod h1:clJnj/oiGkjum5o1McbSZDSLxVThjynRyGBgiAx27Ps=
 github.com/gofrs/uuid v3.2.0+incompatible h1:y12jRkkFxsd7GpqdSZ+/KCs/fJbqpEXSGd4+jfEaewE=
 github.com/gofrs/uuid v3.2.0+incompatible/go.mod h1:b2aQJv3Z4Fp6yNu3cdSllBxTCLRxnplIgP/c0N/04lM=
@@ -5,5 +7,5 @@ github.com/hashicorp/errwrap v1.0.0 h1:hLrqtEDnRye3+sgx6z4qVLNuviH3MR5aQ0ykNJa/U
 github.com/hashicorp/errwrap v1.0.0/go.mod h1:YH+1FKiLXxHSkmPseP+kNlulaMuP3n2brvKWEqk/Jc4=
 github.com/hashicorp/go-multierror v1.0.0 h1:iVjPR7a6H0tWELX5NxNe7bYopibicUzc7uPribsnS6o=
 github.com/hashicorp/go-multierror v1.0.0/go.mod h1:dHtQlpGsu+cZNNAkkCN/P3hoUDHhCYQXV3UM06sGGrk=
-github.com/sauravgsh16/message-server v0.0.0-20200103172051-170a539b5a6a h1:4FPCnxBKqMwmY1Y61DUUmHrIJ9M+WYOoK36Agnrgulg=
-github.com/sauravgsh16/message-server v0.0.0-20200103172051-170a539b5a6a/go.mod h1:dNGQPttl5p8vFRs69/uMd9SvY8SJ3Kju48jnZav+0f4=
+github.com/sauravgsh16/message-server v0.0.0-20200108124427-37e2638c7a15 h1:EfJBD78tj+nRXo0tWZG16kL+V1tHJeSBNU3hwFDyW3Y=
+github.com/sauravgsh16/message-server v0.0.0-20200108124427-37e2638c7a15/go.mod h1:dNGQPttl5p8vFRs69/uMd9SvY8SJ3Kju48jnZav+0f4=
