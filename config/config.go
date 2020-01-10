@@ -7,6 +7,7 @@ var (
 
 const (
 	MessageServerHost = "tcp://localhost:9000"
+	SupervisorHost    = "localhost:9090"
 	// TODO: Temp -- need to find better way to define directory location
 	DefaultCertificateLocation = "cert"
 

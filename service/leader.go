@@ -3,7 +3,9 @@ package service
 import (
 	"fmt"
 	"io/ioutil"
+	"log"
 	"path/filepath"
+	"time"
 
 	"github.com/gofrs/uuid"
 
@@ -14,6 +16,10 @@ import (
 )
 
 func (e *ecuService) AnnounceSn() error {
+	// Set network formation flag true - so that any rekey message
+	// during n/w formation will be ignored.
+	e.setnetworkformationflag(true)
+
 	e.mux.RLock()
 	defer e.mux.RUnlock()
 
@@ -23,6 +29,9 @@ func (e *ecuService) AnnounceSn() error {
 	}
 
 	hashSn := util.GenerateHash([]byte(e.domain.GetSn()))
+
+	log.Printf("(%s) : Broadcasting Sn : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
+
 	if err := h.Send(e.generateMessage([]byte(hashSn))); err != nil {
 		return err
 	}
@@ -50,6 +59,8 @@ func (e *ecuService) AnnounceVin() error {
 	// TODO: standardize message format for all message types
 	msg := e.generateMessage(payload)
 	msg.Metadata[contentType] = "vinCert"
+
+	log.Printf("(%s)Broadcasting VIN : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
 
 	if err := h.Send(msg); err != nil {
 		return err
@@ -80,6 +91,9 @@ func (e *ecuService) loadCerts() error {
 }
 
 func (e *ecuService) handleJoin(msg *client.Message) {
+
+	log.Printf("(%s) Received Join : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
+
 	// register the send sn register
 	appID, err := msg.Metadata.Verify(appKey)
 	if err != nil {
@@ -118,17 +132,23 @@ func (e *ecuService) SendSn(id string) {
 	e.mux.RLock()
 	defer e.mux.RUnlock()
 
-	sender, _ := e.senders[id]
+	sender, _ := e.senders[util.GetHandlerName(config.SendSn, id)]
 	sn := e.domain.GetSn()
 
 	// TODO: process Sn
 	// TODO: ITK logic to be added
+
+	log.Printf("(%s) Send Sn : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
 
 	if err := sender.Send(e.generateMessage([]byte(sn))); err != nil {
 		// TODO: Better Error Handling
 		// Add logger
 		fmt.Printf("Error while sending message: %s", err.Error())
 	}
+	// Set network formation flag false - so that any rekey message received
+	// during n/w formation will be start network formation again.
+	e.setnetworkformationflag(false)
+
 }
 
 func (e *ecuService) generateMessage(payload []byte) *client.Message {

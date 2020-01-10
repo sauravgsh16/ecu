@@ -3,17 +3,23 @@ package service
 import (
 	"bytes"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
 	"github.com/sauravgsh16/ecu/handler"
+	"github.com/sauravgsh16/ecu/util"
 )
 
 func (e *ecuService) SendJoin(id string) {
 	e.mux.RLock()
 	defer e.mux.RUnlock()
 
-	sender, _ := e.senders[id]
+	sender, ok := e.senders[util.GetHandlerName(config.Join, id)]
+	if !ok {
+		panic("join Handler not found")
+	}
 
 	payload, err := e.aggregateCertNone()
 	if err != nil {
@@ -21,6 +27,8 @@ func (e *ecuService) SendJoin(id string) {
 		// Add logger
 		fmt.Printf("Error while creating payload: %s", err.Error())
 	}
+
+	log.Printf("(%s) Sent Join : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
 
 	if err := sender.Send(e.generateMessage(payload)); err != nil {
 		// TODO: Better Error Handling
@@ -52,14 +60,19 @@ func (e *ecuService) handleAnnounceVin(msg *client.Message) {
 
 	// TODO : ******************
 
+	log.Printf("(%s) Received VIN : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
+
 	fmt.Println("Not sure what needs to done here")
-	fmt.Printf("Printing the received message: %+v\n", msg)
+	// fmt.Printf("Printing the received message: %+v\n", msg)
 
 	// TODO : ******************
 
 }
 
 func (e *ecuService) handleSn(msg *client.Message) {
+
+	log.Printf("(%s) Received Sn : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
+
 	if bytes.Equal(msg.Payload, []byte(e.domain.GetSn())) {
 		return
 	}
@@ -72,6 +85,12 @@ func (e *ecuService) handleSn(msg *client.Message) {
 }
 
 func (e *ecuService) handleAnnounceSn(msg *client.Message) {
+
+	log.Printf("(%s) Received AnnounceSn : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
+
+	// set n/w formation flag true, to ignore any rekey message
+	e.setnetworkformationflag(true)
+
 	// In case of member - Sn represents hash(Sn)
 	if bytes.Equal(msg.Payload, []byte(e.domain.GetSn())) {
 		return

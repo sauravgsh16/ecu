@@ -15,7 +15,7 @@ type Sender interface {
 
 // Receiver interface
 type Receiver interface {
-	StartReceiver(chan interface{}) (chan *client.Message, error)
+	StartConsumer(chan interface{}) (chan *client.Message, error)
 	GetName() string
 }
 
@@ -43,7 +43,7 @@ func (r *receive) GetName() string {
 	return r.name
 }
 
-func (r *receive) StartReceiver(done chan interface{}) (chan *client.Message, error) {
+func (r *receive) StartConsumer(done chan interface{}) (chan *client.Message, error) {
 	if r.out != nil {
 		return nil, errors.New("receiver already started")
 	}

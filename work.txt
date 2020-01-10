@@ -153,3 +153,8 @@ Doubts:
     1) What to do when we receive announce Vin ( {nl_nonce||nl_cert} )
     2) Which certs are we sending during announceVin call
     3) Which certs are we sending when sending join request
+
+
+---------------------------------------------------------------------
+                TODO ****
+1) Handle Rekey case - received by member. Need to add RekeySubscriber in member.config

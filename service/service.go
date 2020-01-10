@@ -3,7 +3,9 @@ package service
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"sync"
+	"time"
 
 	"github.com/hashicorp/go-multierror"
 
@@ -57,18 +59,20 @@ type incoming struct {
 }
 
 type ecuService struct {
-	domain       *domain.Ecu
-	broadcasters map[string]handler.Sender
-	subscribers  map[string]*listenerch
-	senders      map[string]handler.Sender
-	receivers    map[string]*listenerch
-	certs        map[string][]byte
-	certLoaded   bool
-	certMux      sync.Mutex
-	mux          sync.RWMutex
-	incoming     chan *incoming
-	p2pincoming  chan *incoming
-	done         chan interface{}
+	domain         *domain.Ecu
+	broadcasters   map[string]handler.Sender
+	senders        map[string]handler.Sender
+	subscribers    map[string]*listenerch
+	receivers      map[string]*listenerch
+	certs          map[string][]byte
+	certLoaded     bool
+	incoming       chan *incoming
+	p2pincoming    chan *incoming
+	done           chan interface{}
+	certMux        sync.Mutex
+	mux            sync.RWMutex
+	processMux     sync.Mutex
+	formingNetwork bool
 }
 
 func newService(c *ecuConfig) (*ecuService, error) {
@@ -109,24 +113,37 @@ func newService(c *ecuConfig) (*ecuService, error) {
 		e.broadcasters[b.GetName()] = b
 	}
 
-	// Register receivers
+	// Register subscribers
 	for _, h := range c.subscribers {
 		s, err := h()
 		if err != nil {
 			return nil, err
 		}
-		e.receivers[s.GetName()] = &listenerch{
+		e.subscribers[s.GetName()] = &listenerch{
 			h:    s,
 			done: make(chan interface{}),
 			name: s.GetName(),
 		}
 	}
 
-	if err := e.startreceivers(); err != nil {
+	// Register receivers
+	for _, h := range c.receivers {
+		r, err := h()
+		if err != nil {
+			return nil, err
+		}
+		e.receivers[r.GetName()] = &listenerch{
+			h:    r,
+			done: make(chan interface{}),
+			name: r.GetName(),
+		}
+	}
+
+	if err := e.startconsumers(); err != nil {
 		return nil, err
 	}
 
-	e.startlisteners()
+	e.multiplexlisteners()
 
 	go e.listen()
 	go e.handleIncoming()
@@ -155,25 +172,39 @@ func (e *ecuService) handleIncoming() {
 	}
 }
 
-func (e *ecuService) startreceivers() error {
+func (e *ecuService) startconsumers() error {
 	var err error
+
+	if len(e.subscribers) == 0 {
+		return nil
+	}
+
+	for _, s := range e.subscribers {
+		ch, er := s.h.StartConsumer(s.done)
+		if er != nil {
+			err = multierror.Append(err, er)
+		}
+		s.ch = ch
+		s.init = true
+	}
 
 	if len(e.receivers) == 0 {
 		return nil
 	}
 
-	for _, r := range e.subscribers {
-		ch, er := r.h.StartReceiver(r.done)
+	for _, r := range e.receivers {
+		ch, er := r.h.StartConsumer(r.done)
 		if er != nil {
 			err = multierror.Append(err, er)
 		}
 		r.ch = ch
 		r.init = true
 	}
+
 	return nil
 }
 
-func (e *ecuService) startlisteners() {
+func (e *ecuService) multiplexlisteners() {
 	var wg sync.WaitGroup
 
 	wg.Add(len(e.subscribers))
@@ -224,6 +255,9 @@ func (e *ecuService) listen() {
 					go e.handleAnnounceVin(i.msg)
 
 				case config.Rekey:
+					if e.getnetworkformationflag() {
+						continue
+					}
 					e.domain.ClearNonceTable()
 					go e.AnnounceSn()
 
@@ -255,6 +289,20 @@ func (e *ecuService) aggregateCertNone() ([]byte, error) {
 	return buf.Bytes(), err
 }
 
+func (e *ecuService) setnetworkformationflag(b bool) {
+	e.processMux.Lock()
+	defer e.processMux.Unlock()
+
+	e.formingNetwork = b
+}
+
+func (e *ecuService) getnetworkformationflag() bool {
+	e.processMux.Lock()
+	defer e.processMux.Unlock()
+
+	return e.formingNetwork
+}
+
 func (e *ecuService) AnnounceNonce() error {
 	nonce := e.domain.GetNonce()
 	msg := e.generateMessage(nonce)
@@ -265,6 +313,9 @@ func (e *ecuService) AnnounceNonce() error {
 	if !ok {
 		return fmt.Errorf("announce nonce handler not found")
 	}
+
+	log.Printf("(%s) Broadcasting nonce: Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
+
 	if err := h.Send(msg); err != nil {
 		return err
 	}
@@ -272,6 +323,9 @@ func (e *ecuService) AnnounceNonce() error {
 }
 
 func (e *ecuService) handleReceiveNonce(msg *client.Message) error {
+
+	log.Printf("(%s )Received Nonce :- Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
+
 	ctype, err := msg.Metadata.Verify(contentType)
 	if err != nil && ctype != "nonce" {
 		return fmt.Errorf("invalid content type")

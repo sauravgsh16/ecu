@@ -2,10 +2,13 @@ package handler
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/sauravgsh16/ecu/config"
+	"github.com/gofrs/uuid"
 
 	"github.com/sauravgsh16/ecu/client"
+	"github.com/sauravgsh16/ecu/config"
+	"github.com/sauravgsh16/ecu/util"
 )
 
 // Broadcaster interface
@@ -69,17 +72,17 @@ func NewRekeyReceiver() (Receiver, error) {
 
 // NewNonceReceiver returns a new nonce receiver
 func NewNonceReceiver() (Receiver, error) {
-	return newBroadcastReceiver(nonceExName, nonceQName, nonceConsumerName, config.Nonce)
+	return newBroadcastReceiver(nonceExName, nonceQName+fmt.Sprintf(".%s", uuid.Must(uuid.NewV4())), nonceConsumerName, config.Nonce)
 }
 
 // NewSendSnSender returns a new 'send sn' sender
 func NewSendSnSender(appID string) (Sender, error) {
-	return newPeerSender(sendSnQName, config.SendSn+appID)
+	return newPeerSender(sendSnQName, util.GetHandlerName(config.SendSn, appID))
 }
 
 // NewJoinSender returns a new 'join' sender
 func NewJoinSender(appID string) (Sender, error) {
-	return newPeerSender(joinQName, config.Join+appID)
+	return newPeerSender(joinQName, util.GetHandlerName(config.Join, appID))
 }
 
 // NewSendSnReceiver returns a new 'send sn' receiver

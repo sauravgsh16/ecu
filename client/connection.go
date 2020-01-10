@@ -73,16 +73,18 @@ func (c *conn) connect() error {
 				return
 			case <-timeout:
 				close(connected)
-				ticker.Stop()
 				return
 			}
 		}
 	}()
+
 	var ok bool
 	c.client, ok = <-connected
+	ticker.Stop()
 	if !ok {
 		return errors.New("failed to connect to message server")
 	}
+
 	close(connected)
 	return nil
 }
