@@ -115,7 +115,7 @@ func newService(c *ecuConfig) (*ecuService, error) {
 
 	// Register subscribers
 	for _, h := range c.subscribers {
-		s, err := h()
+		s, err := h(e.domain.ID)
 		if err != nil {
 			return nil, err
 		}

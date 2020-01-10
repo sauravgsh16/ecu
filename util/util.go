@@ -29,7 +29,7 @@ func NextCounter() int64 {
 	return atomic.AddInt64(&counter, 1)
 }
 
-// GetHandlerName returns a handler name
-func GetHandlerName(handle, id string) string {
+// JoinString returns a handler name
+func JoinString(handle, id string) string {
 	return fmt.Sprintf("%s.%s", handle, id)
 }

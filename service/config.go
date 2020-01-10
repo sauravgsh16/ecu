@@ -12,7 +12,7 @@ const (
 type ecuConfig struct {
 	ecuType      int
 	broadcasters []func() (handler.Sender, error)
-	subscribers  []func() (handler.Receiver, error)
+	subscribers  []func(id string) (handler.Receiver, error)
 	senders      []func(id string) (handler.Sender, error)
 	receivers    []func() (handler.Receiver, error)
 	leader       bool
@@ -26,9 +26,9 @@ func leaderConfig() *ecuConfig {
 			handler.NewVinAnnouncer,
 			handler.NewNonceAnnouncer,
 		},
-		subscribers: []func() (handler.Receiver, error){
-			handler.NewRekeyReceiver,
-			handler.NewNonceReceiver,
+		subscribers: []func(id string) (handler.Receiver, error){
+			handler.NewRekeySubscriber,
+			handler.NewNonceSubscriber,
 		},
 		senders: []func(id string) (handler.Sender, error){
 			handler.NewSendSnSender,
@@ -47,10 +47,10 @@ func memberConfig() *ecuConfig {
 			handler.NewNonceAnnouncer,
 			handler.NewRekeyAnnouncer,
 		},
-		subscribers: []func() (handler.Receiver, error){
-			handler.NewNonceReceiver,
-			handler.NewSnReceiver,
-			handler.NewVinReceiver,
+		subscribers: []func(id string) (handler.Receiver, error){
+			handler.NewNonceSubscriber,
+			handler.NewSnSubscriber,
+			handler.NewVinSubscriber,
 		},
 		senders: []func(id string) (handler.Sender, error){
 			handler.NewJoinSender,

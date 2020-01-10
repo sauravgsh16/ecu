@@ -2,9 +2,6 @@ package handler
 
 import (
 	"context"
-	"fmt"
-
-	"github.com/gofrs/uuid"
 
 	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
@@ -55,34 +52,34 @@ func NewNonceAnnouncer() (Sender, error) {
 	return newBroadcastSender(nonceExName, config.Nonce)
 }
 
-// NewSnReceiver returns a new sn receiver
-func NewSnReceiver() (Receiver, error) {
-	return newBroadcastReceiver(snExName, snQName, snConsumerName, config.Sn)
+// NewSnSubscriber returns a new sn subscriber
+func NewSnSubscriber(id string) (Receiver, error) {
+	return newBroadcastReceiver(snExName, util.JoinString(snQName, id), snConsumerName, config.Sn)
 }
 
-// NewVinReceiver returns a new Vin receiver
-func NewVinReceiver() (Receiver, error) {
-	return newBroadcastReceiver(vinExName, vinQName, vinConsumerName, config.Vin)
+// NewVinSubscriber returns a new Vin subscriber
+func NewVinSubscriber(id string) (Receiver, error) {
+	return newBroadcastReceiver(vinExName, util.JoinString(vinQName, id), vinConsumerName, config.Vin)
 }
 
-// NewRekeyReceiver returns a new start rekey receiver
-func NewRekeyReceiver() (Receiver, error) {
-	return newBroadcastReceiver(rkExName, rkQName, rkConsumerName, config.Rekey)
+// NewRekeySubscriber returns a new start rekey subscriber
+func NewRekeySubscriber(id string) (Receiver, error) {
+	return newBroadcastReceiver(rkExName, util.JoinString(rkQName, id), rkConsumerName, config.Rekey)
 }
 
-// NewNonceReceiver returns a new nonce receiver
-func NewNonceReceiver() (Receiver, error) {
-	return newBroadcastReceiver(nonceExName, nonceQName+fmt.Sprintf(".%s", uuid.Must(uuid.NewV4())), nonceConsumerName, config.Nonce)
+// NewNonceSubscriber returns a new nonce subscriber
+func NewNonceSubscriber(id string) (Receiver, error) {
+	return newBroadcastReceiver(nonceExName, util.JoinString(nonceQName, id), nonceConsumerName, config.Nonce)
 }
 
 // NewSendSnSender returns a new 'send sn' sender
 func NewSendSnSender(appID string) (Sender, error) {
-	return newPeerSender(sendSnQName, util.GetHandlerName(config.SendSn, appID))
+	return newPeerSender(sendSnQName, util.JoinString(config.SendSn, appID))
 }
 
 // NewJoinSender returns a new 'join' sender
 func NewJoinSender(appID string) (Sender, error) {
-	return newPeerSender(joinQName, util.GetHandlerName(config.Join, appID))
+	return newPeerSender(joinQName, util.JoinString(config.Join, appID))
 }
 
 // NewSendSnReceiver returns a new 'send sn' receiver

@@ -16,7 +16,7 @@ func (e *ecuService) SendJoin(id string) {
 	e.mux.RLock()
 	defer e.mux.RUnlock()
 
-	sender, ok := e.senders[util.GetHandlerName(config.Join, id)]
+	sender, ok := e.senders[util.JoinString(config.Join, id)]
 	if !ok {
 		panic("join Handler not found")
 	}

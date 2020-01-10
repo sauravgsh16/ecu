@@ -132,7 +132,7 @@ func (e *ecuService) SendSn(id string) {
 	e.mux.RLock()
 	defer e.mux.RUnlock()
 
-	sender, _ := e.senders[util.GetHandlerName(config.SendSn, id)]
+	sender, _ := e.senders[util.JoinString(config.SendSn, id)]
 	sn := e.domain.GetSn()
 
 	// TODO: process Sn
