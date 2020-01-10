@@ -31,15 +31,21 @@ func main() {
 			close(wait)
 			return
 		}
+
+		fmt.Printf("Got result: %t", r.Result)
+
 		select {
 		case wait <- r.Result:
 		}
 	}()
 
+	fmt.Printf("Blocked on wait\n")
+
 	_, ok := <-wait
 	if !ok {
 		log.Fatalf("Could not find valid ECUs")
 	}
+
 	close(wait)
 
 	c.Initiate()

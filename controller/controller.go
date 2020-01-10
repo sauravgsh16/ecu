@@ -147,11 +147,11 @@ func (c *controller) CloseClient() {
 }
 
 func (c *controller) Initiate() error {
-	switch t := c.service.(type) {
-	case service.Leader:
-		return t.AnnounceSn()
-	case service.Member:
-		return t.AnnounceRekey()
+	switch c.ctype {
+	case leader:
+		return c.service.AnnounceSn()
+	case member:
+		return c.service.AnnounceRekey()
 	}
 	return nil
 }
