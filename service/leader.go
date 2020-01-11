@@ -7,60 +7,125 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/gofrs/uuid"
-
 	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
 	"github.com/sauravgsh16/ecu/handler"
 	"github.com/sauravgsh16/ecu/util"
 )
 
-func (e *ecuService) AnnounceSn() error {
+func newLeader(c *ecuConfig) (*LeaderEcu, error) {
+	l := new(LeaderEcu)
+	l.initCore()
+	l.certs = make(map[string][]byte)
+	l.init(c)
+
+	if err := l.loadCerts(); err != nil {
+		return nil, err
+	}
+
+	if err := l.domain.GenerateSn(); err != nil {
+		return nil, err
+	}
+	return l, nil
+}
+
+// StartListeners starts the listeners for a leader
+func (l *LeaderEcu) StartListeners() {
+	go func() {
+		for {
+			for i := range l.incoming {
+				switch i.name {
+
+				case config.Nonce:
+					go l.handleReceiveNonce(i.msg)
+
+				case config.Rekey:
+					if l.getnetworkformationflag() {
+						continue
+					}
+					l.domain.ClearNonceTable()
+					go l.AnnounceSn()
+
+				default:
+					l.unicastCh <- i
+				}
+			}
+		}
+	}()
+
+	l.handleUnicast()
+}
+
+func (l *LeaderEcu) handleUnicast() {
+	go func() {
+		for {
+			select {
+			case <-l.done:
+				return
+			case i := <-l.unicastCh:
+				switch i.name {
+
+				case config.Join:
+					go l.handleJoin(i.msg)
+
+				default:
+					// TODO: HANDLE NORMAL MESSAGE"
+					// TODO: Log it. Now just printing to stdout
+					fmt.Println(i.msg)
+				}
+			}
+		}
+	}()
+}
+
+// AnnounceSn accnounces the Sn
+func (l *LeaderEcu) AnnounceSn() error {
 	// Set network formation flag true - so that any rekey message
 	// during n/w formation will be ignored.
-	e.setnetworkformationflag(true)
+	l.setnetworkformationflag(true)
 
-	e.mux.RLock()
-	defer e.mux.RUnlock()
+	l.mux.RLock()
+	defer l.mux.RUnlock()
 
-	h, ok := e.broadcasters[config.Sn]
+	h, ok := l.broadcasters[config.Sn]
 	if !ok {
 		return fmt.Errorf("announce Sn handler not found")
 	}
 
-	hashSn := util.GenerateHash([]byte(e.domain.GetSn()))
+	hashSn := util.GenerateHash([]byte(l.domain.GetSn()))
 
-	log.Printf("(%s) : Broadcasting Sn : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
+	log.Printf("(%s) : Broadcasting Sn : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), l.domain.Kind)
 
-	if err := h.Send(e.generateMessage([]byte(hashSn))); err != nil {
+	if err := h.Send(l.generateMessage([]byte(hashSn))); err != nil {
 		return err
 	}
-	return e.AnnounceVin()
+	return l.AnnounceVin()
 }
 
-func (e *ecuService) AnnounceVin() error {
-	e.mux.RLock()
-	defer e.mux.RUnlock()
+// AnnounceVin announces the vin
+func (l *LeaderEcu) AnnounceVin() error {
+	l.mux.RLock()
+	defer l.mux.RUnlock()
 
-	h, ok := e.broadcasters[config.Vin]
+	h, ok := l.broadcasters[config.Vin]
 	if !ok {
 		return fmt.Errorf("announce vim handler not found")
 	}
 
-	if !e.certLoaded || len(e.certs) == 0 {
+	if !l.certLoaded || len(l.certs) == 0 {
 		return fmt.Errorf("vim certs not loaded")
 	}
 
-	payload, err := e.aggregateCertNone()
+	payload, err := l.aggregateCertNone()
 	if err != nil {
 		return err
 	}
 
 	// TODO: standardize message format for all message types
-	msg := e.generateMessage(payload)
+	msg := l.generateMessage(payload)
 	msg.Metadata[contentType] = "vinCert"
 
-	log.Printf("(%s)Broadcasting VIN : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
+	log.Printf("(%s)Broadcasting VIN : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), l.domain.Kind)
 
 	if err := h.Send(msg); err != nil {
 		return err
@@ -69,52 +134,52 @@ func (e *ecuService) AnnounceVin() error {
 }
 
 // TODO: CHECK WHICH CERTS ARE REQUIRED TO BE LOADED
-func (e *ecuService) loadCerts() error {
-	if e.certLoaded {
+func (l *LeaderEcu) loadCerts() error {
+	if l.certLoaded {
 		return nil
 	}
 
-	e.certMux.Lock()
-	defer e.certMux.Unlock()
+	l.certMux.Lock()
+	defer l.certMux.Unlock()
 
-	e.certs = make(map[string][]byte)
+	l.certs = make(map[string][]byte)
 
 	for _, c := range config.DefaultBroadCastCertificates {
-		b, err := ioutil.ReadFile(filepath.Join(e.domain.CertLoc, c))
+		b, err := ioutil.ReadFile(filepath.Join(l.domain.CertLoc, c))
 		if err != nil {
 			return fmt.Errorf("failed to load certificate: %s", err.Error())
 		}
-		e.certs[c] = b
+		l.certs[c] = b
 	}
-	e.certLoaded = true
+	l.certLoaded = true
 	return nil
 }
 
-func (e *ecuService) handleJoin(msg *client.Message) {
+func (l *LeaderEcu) handleJoin(msg *client.Message) {
 
-	log.Printf("(%s) Received Join : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
+	log.Printf("(%s) Received Join : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), l.domain.Kind)
 
 	// register the send sn register
 	appID, err := msg.Metadata.Verify(appKey)
 	if err != nil {
 		// TODO: improve error handling
-		// panicing for now
+		// TODO: panicing for now
 		panic(fmt.Sprintf("%s: %s", appKey, err.Error()))
 	}
 
-	if err := e.registerSnSender(appID); err != nil {
+	if err := l.registerSnSender(appID); err != nil {
 		// TODO: improve error handling
-		// panicing for now
+		// TODO: panicing for now
 		panic(fmt.Sprintf("%s: %s", errSendSnRegister, err.Error()))
 	}
-	go e.SendSn(appID)
+	go l.SendSn(appID)
 }
 
-func (e *ecuService) registerSnSender(appID string) error {
-	e.mux.Lock()
-	defer e.mux.Unlock()
+func (l *LeaderEcu) registerSnSender(appID string) error {
+	l.mux.Lock()
+	defer l.mux.Unlock()
 
-	_, ok := e.senders[appID]
+	_, ok := l.senders[appID]
 	if ok {
 		return nil
 	}
@@ -124,41 +189,29 @@ func (e *ecuService) registerSnSender(appID string) error {
 		return err
 	}
 
-	e.senders[h.GetName()] = h
+	l.senders[h.GetName()] = h
 	return nil
 }
 
-func (e *ecuService) SendSn(id string) {
-	e.mux.RLock()
-	defer e.mux.RUnlock()
+// SendSn sends Sn to memeber ECUs
+func (l *LeaderEcu) SendSn(id string) {
+	l.mux.RLock()
+	defer l.mux.RUnlock()
 
-	sender, _ := e.senders[util.JoinString(config.SendSn, id)]
-	sn := e.domain.GetSn()
+	sender, _ := l.senders[util.JoinString(config.SendSn, id)]
+	sn := l.domain.GetSn()
 
 	// TODO: process Sn
 	// TODO: ITK logic to be added
 
-	log.Printf("(%s) Send Sn : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
+	log.Printf("(%s) Send Sn : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), l.domain.Kind)
 
-	if err := sender.Send(e.generateMessage([]byte(sn))); err != nil {
+	if err := sender.Send(l.generateMessage([]byte(sn))); err != nil {
 		// TODO: Better Error Handling
 		// Add logger
 		fmt.Printf("Error while sending message: %s", err.Error())
 	}
 	// Set network formation flag false - so that any rekey message received
 	// during n/w formation will be start network formation again.
-	e.setnetworkformationflag(false)
-
-}
-
-func (e *ecuService) generateMessage(payload []byte) *client.Message {
-	uuid := fmt.Sprintf("%s", uuid.Must(uuid.NewV4()))
-
-	return &client.Message{
-		UUID:    uuid,
-		Payload: client.Payload(payload),
-		Metadata: client.Metadata(map[string]interface{}{
-			"ApplicationID": e.domain.ID,
-		}),
-	}
+	l.setnetworkformationflag(false)
 }

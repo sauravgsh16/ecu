@@ -15,7 +15,6 @@ type ecuConfig struct {
 	subscribers  []func(id string) (handler.Receiver, error)
 	senders      []func(id string) (handler.Sender, error)
 	receivers    []func() (handler.Receiver, error)
-	leader       bool
 }
 
 func leaderConfig() *ecuConfig {
@@ -36,7 +35,6 @@ func leaderConfig() *ecuConfig {
 		receivers: []func() (handler.Receiver, error){
 			handler.NewJoinReceiver,
 		},
-		leader: true,
 	}
 }
 

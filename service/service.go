@@ -2,12 +2,15 @@ package service
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/hashicorp/go-multierror"
+
+	"github.com/gofrs/uuid"
 
 	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
@@ -16,33 +19,27 @@ import (
 )
 
 const (
-	errInvalidJoinRequest = "join request sent - invalid"
-	errSendSnRegister     = "failed to register Send Sn handler"
-	errJoinRegister       = "failed to register Join handler"
-
 	// Key Names
 	appKey      = "ApplicationID"
 	contentType = "ContentType"
 )
 
-// Leader interface
-type Leader interface {
-	AnnounceSn() error
-	AnnounceVin() error
-	AnnounceNonce() error
-	SendSn(string)
-}
-
-// Member interface
-type Member interface {
-	AnnounceRekey() error
-	AnnounceNonce() error
-	SendJoin(id string)
-}
+var (
+	errInvalidContentType = errors.New("invalid content type")
+	errInvalidJoinRequest = errors.New("join request sent - invalid")
+	errSendSnRegister     = errors.New("failed to register Send Sn handler")
+	errJoinRegister       = errors.New("failed to register Join handler")
+	errAppIDNotFound      = errors.New("application id not found")
+)
 
 // ECU interface
 type ECU interface {
-	AnnounceNonce() error
+	AnnouceNonce() error
+	Close()
+	init(c *ecuConfig) error
+	startconsumers() error
+	multiplexlisteners()
+	handleReceiveNonce(msg *client.Message) error
 }
 
 type listenerch struct {
@@ -64,51 +61,118 @@ type ecuService struct {
 	senders        map[string]handler.Sender
 	subscribers    map[string]*listenerch
 	receivers      map[string]*listenerch
-	certs          map[string][]byte
-	certLoaded     bool
 	incoming       chan *incoming
-	p2pincoming    chan *incoming
+	unicastCh      chan *incoming
 	done           chan interface{}
-	certMux        sync.Mutex
-	mux            sync.RWMutex
 	processMux     sync.Mutex
+	mux            sync.RWMutex
 	formingNetwork bool
 }
 
-func newService(c *ecuConfig) (*ecuService, error) {
-	d, err := domain.NewEcu(c.ecuType)
+// LeaderEcu struct
+type LeaderEcu struct {
+	ecuService
+	certs      map[string][]byte
+	certMux    sync.Mutex
+	certLoaded bool
+}
+
+// MemberEcu struct
+type MemberEcu struct {
+	ecuService
+}
+
+// StartListeners accepts the ecu interface and start the appropriate listeners
+func StartListeners(e ECU) {
+	switch t := e.(type) {
+	case *LeaderEcu:
+		t.StartListeners()
+	case *MemberEcu:
+		t.StartListeners()
+	}
+}
+
+func (e *ecuService) generateMessage(payload []byte) *client.Message {
+	uuid := fmt.Sprintf("%s", uuid.Must(uuid.NewV4()))
+
+	return &client.Message{
+		UUID:    uuid,
+		Payload: client.Payload(payload),
+		Metadata: client.Metadata(map[string]interface{}{
+			"ApplicationID": e.domain.ID,
+		}),
+	}
+}
+
+func (e *ecuService) AnnouceNonce() error {
+	nonce := e.domain.GetNonce()
+	msg := e.generateMessage(nonce)
+
+	// Set headers
+	msg.Metadata.Set(contentType, "nonce")
+	msg.Metadata.Set(appKey, e.domain.ID)
+
+	h, ok := e.broadcasters[config.Nonce]
+	if !ok {
+		return fmt.Errorf("announce nonce handler not found")
+	}
+
+	// TODO: proper logging
+	log.Printf("(%s) Broadcasting nonce: Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
+
+	if err := h.Send(msg); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (e *ecuService) handleReceiveNonce(msg *client.Message) error {
+	// TODO: proper logging
+	log.Printf("(%s )Received Nonce :- Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
+
+	ctype, err := msg.Metadata.Verify(contentType)
+	if err != nil && ctype != "nonce" {
+		return errInvalidContentType
+	}
+
+	appID, err := msg.Metadata.Verify(appKey)
 	if err != nil {
-		return nil, err
+		return errAppIDNotFound
 	}
 
-	e := &ecuService{
-		domain:       d,
-		broadcasters: make(map[string]handler.Sender),
-		subscribers:  make(map[string]*listenerch),
-		senders:      make(map[string]handler.Sender),
-		receivers:    make(map[string]*listenerch),
-		incoming:     make(chan *incoming),
-		p2pincoming:  make(chan *incoming),
-		done:         make(chan interface{}),
-	}
-	if c.leader {
-		if err := e.loadCerts(); err != nil {
-			return nil, err
-		}
+	return e.domain.AddToNonceTable(appID, msg.Payload)
+}
 
-		if err := e.domain.GenerateSn(); err != nil {
-			return nil, err
-		}
-	}
+func (e *ecuService) initCore() {
+	e.broadcasters = make(map[string]handler.Sender)
+	e.subscribers = make(map[string]*listenerch)
+	e.senders = make(map[string]handler.Sender)
+	e.receivers = make(map[string]*listenerch)
+	e.incoming = make(chan *incoming)
+	e.unicastCh = make(chan *incoming)
+	e.done = make(chan interface{})
+}
 
-	e.mux.Lock()
-	defer e.mux.Unlock()
+// TODO
+func (e *ecuService) closeReceivers() {}
+
+// TODO
+func (e *ecuService) Close() {}
+
+func (e *ecuService) init(c *ecuConfig) error {
+	var err error
+
+	e.domain, err = domain.NewEcu(c.ecuType)
+	if err != nil {
+		return err
+	}
 
 	// Register broadcasters
 	for _, h := range c.broadcasters {
 		b, err := h()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		e.broadcasters[b.GetName()] = b
 	}
@@ -117,7 +181,7 @@ func newService(c *ecuConfig) (*ecuService, error) {
 	for _, h := range c.subscribers {
 		s, err := h(e.domain.ID)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		e.subscribers[s.GetName()] = &listenerch{
 			h:    s,
@@ -130,7 +194,7 @@ func newService(c *ecuConfig) (*ecuService, error) {
 	for _, h := range c.receivers {
 		r, err := h()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		e.receivers[r.GetName()] = &listenerch{
 			h:    r,
@@ -140,36 +204,12 @@ func newService(c *ecuConfig) (*ecuService, error) {
 	}
 
 	if err := e.startconsumers(); err != nil {
-		return nil, err
+		return err
 	}
 
 	e.multiplexlisteners()
 
-	go e.listen()
-	go e.handleIncoming()
-
-	return e, nil
-}
-
-func (e *ecuService) handleIncoming() {
-	for {
-		select {
-		case <-e.done:
-			return
-		case i := <-e.p2pincoming:
-			switch i.name {
-
-			case config.Join:
-				go e.handleJoin(i.msg)
-
-			case config.SendSn:
-				go e.handleSn(i.msg)
-
-			default:
-				panic("unknown type")
-			}
-		}
-	}
+	return nil
 }
 
 func (e *ecuService) startconsumers() error {
@@ -236,40 +276,18 @@ func (e *ecuService) multiplexlisteners() {
 	}()
 }
 
-// TODO
-func (e *ecuService) closeReceivers() {}
+func (e *ecuService) setnetworkformationflag(b bool) {
+	e.processMux.Lock()
+	defer e.processMux.Unlock()
 
-// TODO
-func (e *ecuService) Close() {}
+	e.formingNetwork = b
+}
 
-func (e *ecuService) listen() {
-	go func() {
-		for {
-			for i := range e.incoming {
-				switch i.name {
-				case config.Sn:
-					e.domain.ClearNonceTable()
-					go e.handleAnnounceSn(i.msg)
+func (e *ecuService) getnetworkformationflag() bool {
+	e.processMux.Lock()
+	defer e.processMux.Unlock()
 
-				case config.Vin:
-					go e.handleAnnounceVin(i.msg)
-
-				case config.Rekey:
-					if e.getnetworkformationflag() {
-						continue
-					}
-					e.domain.ClearNonceTable()
-					go e.AnnounceSn()
-
-				case config.Nonce:
-					go e.handleReceiveNonce(i.msg)
-
-				default:
-					e.p2pincoming <- i
-				}
-			}
-		}
-	}()
+	return e.formingNetwork
 }
 
 func (e *ecuService) aggregateCertNone() ([]byte, error) {
@@ -289,62 +307,14 @@ func (e *ecuService) aggregateCertNone() ([]byte, error) {
 	return buf.Bytes(), err
 }
 
-func (e *ecuService) setnetworkformationflag(b bool) {
-	e.processMux.Lock()
-	defer e.processMux.Unlock()
-
-	e.formingNetwork = b
-}
-
-func (e *ecuService) getnetworkformationflag() bool {
-	e.processMux.Lock()
-	defer e.processMux.Unlock()
-
-	return e.formingNetwork
-}
-
-func (e *ecuService) AnnounceNonce() error {
-	nonce := e.domain.GetNonce()
-	msg := e.generateMessage(nonce)
-	msg.Metadata[contentType] = "nonce"
-	msg.Metadata[appKey] = e.domain.ID
-
-	h, ok := e.broadcasters[config.Nonce]
-	if !ok {
-		return fmt.Errorf("announce nonce handler not found")
+// NewEcu returns a new ECU
+func NewEcu(kind int) (ECU, error) {
+	switch kind {
+	case leader:
+		return newLeader(leaderConfig())
+	case member:
+		return newMember(memberConfig())
+	default:
+		panic("unknown ecu kind")
 	}
-
-	log.Printf("(%s) Broadcasting nonce: Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
-
-	if err := h.Send(msg); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (e *ecuService) handleReceiveNonce(msg *client.Message) error {
-
-	log.Printf("(%s )Received Nonce :- Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
-
-	ctype, err := msg.Metadata.Verify(contentType)
-	if err != nil && ctype != "nonce" {
-		return fmt.Errorf("invalid content type")
-	}
-
-	appID, err := msg.Metadata.Verify(appKey)
-	if err != nil {
-		return fmt.Errorf("application id not found")
-	}
-
-	return e.domain.AddToNonceTable(appID, msg.Payload)
-}
-
-// NewLeader returns a new leader ecu
-func NewLeader() (Leader, error) {
-	return newService(leaderConfig())
-}
-
-// NewMember returns a new member ecu
-func NewMember() (Member, error) {
-	return newService(memberConfig())
 }

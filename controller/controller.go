@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"time"
 
@@ -47,28 +46,10 @@ func New(kind int) (Controller, error) {
 	}
 
 	c.ctx, c.cancel = context.WithTimeout(context.Background(), timeout*time.Second)
-
-	switch c.ctype {
-	case leader:
-
-		fmt.Printf("Creating type: %d\n", kind)
-
-		c.service, err = service.NewLeader()
-		if err != nil {
-			return nil, err
-		}
-	case member:
-
-		fmt.Printf("Creating type: %d\n", kind)
-
-		c.service, err = service.NewMember()
-		if err != nil {
-			return nil, err
-		}
-	default:
-		panic("unknown ECU type")
+	c.service, err = service.NewEcu(kind)
+	if err == nil {
+		return nil, err
 	}
-
 	return c, c.connect()
 }
 
@@ -147,11 +128,11 @@ func (c *controller) CloseClient() {
 }
 
 func (c *controller) Initiate() error {
-	switch c.ctype {
-	case leader:
-		return c.service.AnnounceSn()
-	case member:
-		return c.service.AnnounceRekey()
+	switch t := c.service.(type) {
+	case *service.LeaderEcu:
+		return t.AnnounceSn()
+	case *service.MemberEcu:
+		return t.AnnounceRekey()
 	}
 	return nil
 }
