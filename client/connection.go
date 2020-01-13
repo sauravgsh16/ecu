@@ -49,7 +49,7 @@ func newConnection() (*connectionWrapper, error) {
 		return nil, err
 	}
 	if !c.initialized {
-		return nil, errors.New("uninitialized connected")
+		return nil, errors.New("uninitialized connection")
 	}
 
 	return &connectionWrapper{conn: c.client, connected: true}, nil

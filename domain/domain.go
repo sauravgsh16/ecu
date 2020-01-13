@@ -59,6 +59,9 @@ type Ecu struct {
 // NewEcu returns a new Ecu with sn = 0
 func NewEcu(kind int) (*Ecu, error) {
 	uuid := fmt.Sprintf("%s", uuid.Must(uuid.NewV4()))
+
+	log.Printf("New ECU registered with ID: %s\n\n", uuid)
+
 	e := &Ecu{
 		ID:       uuid,
 		encKey:   make([]byte, encKey),

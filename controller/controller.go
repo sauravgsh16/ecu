@@ -31,7 +31,7 @@ type Controller interface {
 
 type controller struct {
 	service        service.ECU
-	superVisorConn *grpc.ClientConn
+	supervisorConn *grpc.ClientConn
 	client         supervisor.SuperviseClient
 	ctx            context.Context
 	cancel         context.CancelFunc
@@ -47,9 +47,12 @@ func New(kind int) (Controller, error) {
 
 	c.ctx, c.cancel = context.WithTimeout(context.Background(), timeout*time.Second)
 	c.service, err = service.NewEcu(kind)
-	if err == nil {
+	if err != nil {
 		return nil, err
 	}
+
+	// Start the listeners associated with the ECU
+	service.StartListeners(c.service)
 	return c, c.connect()
 }
 
@@ -78,7 +81,7 @@ func (c *controller) connect() error {
 
 	var ok bool
 
-	c.superVisorConn, ok = <-connected
+	c.supervisorConn, ok = <-connected
 	ticker.Stop()
 	if !ok {
 		return errors.New("failed to connect to supervisor server")
@@ -90,7 +93,7 @@ func (c *controller) connect() error {
 }
 
 func (c *controller) registerClient() {
-	c.client = supervisor.NewSuperviseClient(c.superVisorConn)
+	c.client = supervisor.NewSuperviseClient(c.supervisorConn)
 }
 
 func (c *controller) Register() (*supervisor.RegisterNodeResponse, error) {
@@ -124,7 +127,7 @@ func (c *controller) Wait(id int64) (*supervisor.NodeStatusResponse, error) {
 
 func (c *controller) CloseClient() {
 	c.cancel()
-	c.superVisorConn.Close()
+	c.supervisorConn.Close()
 }
 
 func (c *controller) Initiate() error {

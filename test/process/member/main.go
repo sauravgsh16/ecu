@@ -45,8 +45,8 @@ func main() {
 	if !ok {
 		log.Fatalf("Could not find valid ECUs")
 	}
-
 	close(wait)
+	c.CloseClient()
 
 	c.Initiate()
 	<-forever

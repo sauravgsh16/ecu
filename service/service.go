@@ -82,51 +82,6 @@ type MemberEcu struct {
 	ecuService
 }
 
-// StartListeners accepts the ecu interface and start the appropriate listeners
-func StartListeners(e ECU) {
-	switch t := e.(type) {
-	case *LeaderEcu:
-		t.StartListeners()
-	case *MemberEcu:
-		t.StartListeners()
-	}
-}
-
-func (e *ecuService) generateMessage(payload []byte) *client.Message {
-	uuid := fmt.Sprintf("%s", uuid.Must(uuid.NewV4()))
-
-	return &client.Message{
-		UUID:    uuid,
-		Payload: client.Payload(payload),
-		Metadata: client.Metadata(map[string]interface{}{
-			"ApplicationID": e.domain.ID,
-		}),
-	}
-}
-
-func (e *ecuService) AnnouceNonce() error {
-	nonce := e.domain.GetNonce()
-	msg := e.generateMessage(nonce)
-
-	// Set headers
-	msg.Metadata.Set(contentType, "nonce")
-	msg.Metadata.Set(appKey, e.domain.ID)
-
-	h, ok := e.broadcasters[config.Nonce]
-	if !ok {
-		return fmt.Errorf("announce nonce handler not found")
-	}
-
-	// TODO: proper logging
-	log.Printf("(%s) Broadcasting nonce: Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
-
-	if err := h.Send(msg); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (e *ecuService) handleReceiveNonce(msg *client.Message) error {
 	// TODO: proper logging
 	log.Printf("(%s )Received Nonce :- Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), e.domain.Kind)
@@ -144,7 +99,7 @@ func (e *ecuService) handleReceiveNonce(msg *client.Message) error {
 	return e.domain.AddToNonceTable(appID, msg.Payload)
 }
 
-func (e *ecuService) initCore() {
+func (e *ecuService) initializeFields() {
 	e.broadcasters = make(map[string]handler.Sender)
 	e.subscribers = make(map[string]*listenerch)
 	e.senders = make(map[string]handler.Sender)
@@ -276,6 +231,18 @@ func (e *ecuService) multiplexlisteners() {
 	}()
 }
 
+func (e *ecuService) generateMessage(payload []byte) *client.Message {
+	uuid := fmt.Sprintf("%s", uuid.Must(uuid.NewV4()))
+
+	return &client.Message{
+		UUID:    uuid,
+		Payload: client.Payload(payload),
+		Metadata: client.Metadata(map[string]interface{}{
+			"ApplicationID": e.domain.ID,
+		}),
+	}
+}
+
 func (e *ecuService) setnetworkformationflag(b bool) {
 	e.processMux.Lock()
 	defer e.processMux.Unlock()
@@ -317,4 +284,37 @@ func NewEcu(kind int) (ECU, error) {
 	default:
 		panic("unknown ecu kind")
 	}
+}
+
+// StartListeners accepts the ecu interface and start the appropriate listeners
+func StartListeners(e ECU) {
+	switch t := e.(type) {
+	case *LeaderEcu:
+		t.StartListeners()
+	case *MemberEcu:
+		t.StartListeners()
+	}
+}
+
+func (e *ecuService) AnnouceNonce() error {
+	nonce := e.domain.GetNonce()
+	msg := e.generateMessage(nonce)
+
+	// Set headers
+	msg.Metadata.Set(contentType, "nonce")
+	msg.Metadata.Set(appKey, e.domain.ID)
+
+	h, ok := e.broadcasters[config.Nonce]
+	if !ok {
+		return fmt.Errorf("announce nonce handler not found")
+	}
+
+	// TODO: proper logging
+	log.Printf("Broadcasting nonce from AppID - %s\n", e.domain.ID)
+
+	if err := h.Send(msg); err != nil {
+		return err
+	}
+
+	return nil
 }

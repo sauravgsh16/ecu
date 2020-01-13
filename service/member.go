@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
@@ -14,7 +13,7 @@ import (
 
 func newMember(c *ecuConfig) (*MemberEcu, error) {
 	m := new(MemberEcu)
-	m.initCore()
+	m.initializeFields()
 	m.init(c)
 	return m, nil
 }
@@ -86,7 +85,7 @@ func (m *MemberEcu) SendJoin(id string) {
 		fmt.Printf("Error while creating payload: %s", err.Error())
 	}
 
-	log.Printf("(%s) Sent Join : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), m.domain.Kind)
+	log.Printf("Sent Join to - AppID: %s\n", id)
 
 	if err := sender.Send(m.generateMessage(payload)); err != nil {
 		// TODO: Better Error Handling
@@ -99,15 +98,16 @@ func (m *MemberEcu) SendJoin(id string) {
 func (m *MemberEcu) AnnounceRekey() error {
 	m.domain.ClearNonceTable()
 
-	empty := make([]byte, 8)
-
-	rkmsg := m.generateMessage(empty)
-	rkmsg.Metadata[contentType] = "rekey"
-
 	h, ok := m.broadcasters[config.Rekey]
 	if !ok {
 		return fmt.Errorf("announce rekey handler not found")
 	}
+
+	empty := make([]byte, 8)
+	rkmsg := m.generateMessage(empty)
+	rkmsg.Metadata.Set(contentType, "rekey")
+
+	log.Printf("Sending Rekey From AppID - %s\n", m.domain.ID)
 
 	if err := h.Send(rkmsg); err != nil {
 		return err
@@ -119,7 +119,7 @@ func (m *MemberEcu) handleAnnounceVin(msg *client.Message) {
 
 	// TODO : ******************
 
-	log.Printf("(%s) Received VIN : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), m.domain.Kind)
+	log.Printf("Received VIN From AppID - %s\n", msg.Metadata.Get(appKey))
 
 	fmt.Println("Not sure what needs to done here")
 	// fmt.Printf("Printing the received message: %+v\n", msg)
@@ -130,7 +130,7 @@ func (m *MemberEcu) handleAnnounceVin(msg *client.Message) {
 
 func (m *MemberEcu) handleSn(msg *client.Message) {
 
-	log.Printf("(%s) Received Sn : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), m.domain.Kind)
+	log.Printf("Received Sn From AppID: - %s\n", msg.Metadata.Get(appKey))
 
 	if bytes.Equal(msg.Payload, []byte(m.domain.GetSn())) {
 		return
@@ -145,7 +145,7 @@ func (m *MemberEcu) handleSn(msg *client.Message) {
 
 func (m *MemberEcu) handleAnnounceSn(msg *client.Message) {
 
-	log.Printf("(%s) Received AnnounceSn : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), m.domain.Kind)
+	log.Printf("Received AnnounceSn From AppID: - %s\n", msg.Metadata.Get(appKey))
 
 	// set n/w formation flag true, to ignore any rekey message
 	m.setnetworkformationflag(true)
@@ -158,7 +158,7 @@ func (m *MemberEcu) handleAnnounceSn(msg *client.Message) {
 	appID, err := msg.Metadata.Verify(appKey)
 	if err != nil {
 		// TODO: improve error handling
-		// panicing for now
+		// TODO: panicing for now
 		panic(fmt.Sprintf("%s: %s", appKey, err.Error()))
 	}
 

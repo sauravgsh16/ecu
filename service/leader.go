@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"log"
 	"path/filepath"
-	"time"
 
 	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
@@ -15,7 +14,7 @@ import (
 
 func newLeader(c *ecuConfig) (*LeaderEcu, error) {
 	l := new(LeaderEcu)
-	l.initCore()
+	l.initializeFields()
 	l.certs = make(map[string][]byte)
 	l.init(c)
 
@@ -40,6 +39,9 @@ func (l *LeaderEcu) StartListeners() {
 					go l.handleReceiveNonce(i.msg)
 
 				case config.Rekey:
+
+					log.Printf("Received Rekey From appID: - %s\n", i.msg.Metadata.Get(appKey))
+
 					if l.getnetworkformationflag() {
 						continue
 					}
@@ -92,10 +94,9 @@ func (l *LeaderEcu) AnnounceSn() error {
 		return fmt.Errorf("announce Sn handler not found")
 	}
 
+	log.Printf("Broadcasting Sn from AppID: - %s\n", l.domain.ID)
+
 	hashSn := util.GenerateHash([]byte(l.domain.GetSn()))
-
-	log.Printf("(%s) : Broadcasting Sn : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), l.domain.Kind)
-
 	if err := h.Send(l.generateMessage([]byte(hashSn))); err != nil {
 		return err
 	}
@@ -123,9 +124,9 @@ func (l *LeaderEcu) AnnounceVin() error {
 
 	// TODO: standardize message format for all message types
 	msg := l.generateMessage(payload)
-	msg.Metadata[contentType] = "vinCert"
+	msg.Metadata.Set(contentType, "vinCert")
 
-	log.Printf("(%s)Broadcasting VIN : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), l.domain.Kind)
+	log.Printf("Broadcasting VIN from AppID: - %s\n", msg.Metadata.Get(appKey))
 
 	if err := h.Send(msg); err != nil {
 		return err
@@ -156,9 +157,6 @@ func (l *LeaderEcu) loadCerts() error {
 }
 
 func (l *LeaderEcu) handleJoin(msg *client.Message) {
-
-	log.Printf("(%s) Received Join : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), l.domain.Kind)
-
 	// register the send sn register
 	appID, err := msg.Metadata.Verify(appKey)
 	if err != nil {
@@ -166,6 +164,8 @@ func (l *LeaderEcu) handleJoin(msg *client.Message) {
 		// TODO: panicing for now
 		panic(fmt.Sprintf("%s: %s", appKey, err.Error()))
 	}
+
+	log.Printf("Received Join from AppID: %s\n", msg.Metadata.Get(appKey))
 
 	if err := l.registerSnSender(appID); err != nil {
 		// TODO: improve error handling
@@ -198,14 +198,16 @@ func (l *LeaderEcu) SendSn(id string) {
 	l.mux.RLock()
 	defer l.mux.RUnlock()
 
-	sender, _ := l.senders[util.JoinString(config.SendSn, id)]
-	sn := l.domain.GetSn()
-
+	sender, ok := l.senders[util.JoinString(config.SendSn, id)]
+	if !ok {
+		panic("sender not found")
+	}
 	// TODO: process Sn
 	// TODO: ITK logic to be added
 
-	log.Printf("(%s) Send Sn : Type - %d\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), l.domain.Kind)
+	log.Printf("Send Sn to AppID: - %s\n\n\n\n\n", id)
 
+	sn := l.domain.GetSn()
 	if err := sender.Send(l.generateMessage([]byte(sn))); err != nil {
 		// TODO: Better Error Handling
 		// Add logger
