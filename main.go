@@ -1,12 +1,16 @@
 package main
 
 import (
-	"github.com/ar3s3ru/gobus"
+	"fmt"
+	"regexp"
 )
 
 func main() {
-	b := gobus.NewEventBus()
-	b.Subscribe(test)
+	str := "Join.abcd-efhecdsfks-sdfsdf2q312"
+	pat := regexp.MustCompile(`^(?P<type>.*?)\.`)
+	match := pat.FindStringSubmatch(str)
+
+	fmt.Printf("%v: %s\n", pat.SubexpNames(), match)
 }
 
 func test(event string) {

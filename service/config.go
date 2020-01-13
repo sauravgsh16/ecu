@@ -12,9 +12,9 @@ const (
 type ecuConfig struct {
 	ecuType      int
 	broadcasters []func() (handler.Sender, error)
-	subscribers  []func(id string) (handler.Receiver, error)
-	senders      []func(id string) (handler.Sender, error)
-	receivers    []func() (handler.Receiver, error)
+	subscribers  []func(string) (handler.Receiver, error)
+	senders      []func(string) (handler.Sender, error)
+	receivers    []func(string) (handler.Receiver, error)
 }
 
 func leaderConfig() *ecuConfig {
@@ -25,14 +25,14 @@ func leaderConfig() *ecuConfig {
 			handler.NewVinAnnouncer,
 			handler.NewNonceAnnouncer,
 		},
-		subscribers: []func(id string) (handler.Receiver, error){
+		subscribers: []func(string) (handler.Receiver, error){
 			handler.NewRekeySubscriber,
 			handler.NewNonceSubscriber,
 		},
-		senders: []func(id string) (handler.Sender, error){
+		senders: []func(string) (handler.Sender, error){
 			handler.NewSendSnSender,
 		},
-		receivers: []func() (handler.Receiver, error){
+		receivers: []func(string) (handler.Receiver, error){
 			handler.NewJoinReceiver,
 		},
 	}
@@ -45,15 +45,16 @@ func memberConfig() *ecuConfig {
 			handler.NewNonceAnnouncer,
 			handler.NewRekeyAnnouncer,
 		},
-		subscribers: []func(id string) (handler.Receiver, error){
+		subscribers: []func(string) (handler.Receiver, error){
+			handler.NewRekeySubscriber,
 			handler.NewNonceSubscriber,
 			handler.NewSnSubscriber,
 			handler.NewVinSubscriber,
 		},
-		senders: []func(id string) (handler.Sender, error){
+		senders: []func(string) (handler.Sender, error){
 			handler.NewJoinSender,
 		},
-		receivers: []func() (handler.Receiver, error){
+		receivers: []func(string) (handler.Receiver, error){
 			handler.NewSendSnReceiver,
 		},
 	}

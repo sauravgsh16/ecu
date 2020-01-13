@@ -3,6 +3,8 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	"time"
 
@@ -25,8 +27,9 @@ const (
 type Controller interface {
 	Initiate() error
 	Register() (*supervisor.RegisterNodeResponse, error)
-	Wait(id int64) (*supervisor.NodeStatusResponse, error)
+	Wait(done chan interface{}) (chan string, chan error)
 	CloseClient()
+	StartReceiveRoutines(w chan string, errCh chan error)
 }
 
 type controller struct {
@@ -103,12 +106,14 @@ func (c *controller) Register() (*supervisor.RegisterNodeResponse, error) {
 	case leader:
 		req = &supervisor.RegisterNodeRequest{
 			Node: &supervisor.Node{
+				Id:   c.service.GetDomainID(),
 				Type: supervisor.Node_Leader,
 			},
 		}
 	case member:
 		req = &supervisor.RegisterNodeRequest{
 			Node: &supervisor.Node{
+				Id:   c.service.GetDomainID(),
 				Type: supervisor.Node_Member,
 			},
 		}
@@ -118,11 +123,67 @@ func (c *controller) Register() (*supervisor.RegisterNodeResponse, error) {
 	return c.client.Register(c.ctx, req)
 }
 
-func (c *controller) Wait(id int64) (*supervisor.NodeStatusResponse, error) {
-	req := &supervisor.NodeStatusRequest{
-		Id: id,
+func (c *controller) Wait(done chan interface{}) (chan string, chan error) {
+	ctx := context.Background()
+	idCh := make(chan string)
+	errch := make(chan error)
+
+	switch c.ctype {
+	case leader:
+		waitReq := &supervisor.MemberStatusRequest{
+			Id: c.service.GetDomainID(),
+		}
+		respStream, err := c.client.WatchMember(ctx, waitReq)
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+
+		go func(done chan interface{}) {
+			for {
+				resp, err := respStream.Recv()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					errch <- err
+					break
+				}
+				select {
+				case idCh <- resp.DependentID:
+				case <-done:
+					break
+				}
+			}
+		}(done)
+
+	case member:
+		waitReq := &supervisor.LeaderStatusRequest{
+			Id: c.service.GetDomainID(),
+		}
+		go func(done chan interface{}) {
+			resp, err := c.client.WatchLeader(ctx, waitReq)
+			if err != nil {
+				errch <- err
+				return
+			}
+			select {
+			case idCh <- resp.DependentID:
+			case <-done:
+				return
+			}
+		}(done)
 	}
-	return c.client.Watch(c.ctx, req)
+	return idCh, errch
+}
+
+func (c *controller) StartReceiveRoutines(w chan string, errCh chan error) {
+	switch t := c.service.(type) {
+	case *service.LeaderEcu:
+		t.CreateUnicastHandlers(w, errCh)
+
+	case *service.MemberEcu:
+		t.CreateUnicastHandlers(w, errCh)
+	}
 }
 
 func (c *controller) CloseClient() {
@@ -133,9 +194,14 @@ func (c *controller) CloseClient() {
 func (c *controller) Initiate() error {
 	switch t := c.service.(type) {
 	case *service.LeaderEcu:
-		return t.AnnounceSn()
+
+		fmt.Printf("%+v\n", t)
+
+		// return t.AnnounceSn()
 	case *service.MemberEcu:
-		return t.AnnounceRekey()
+		fmt.Printf("%+v\n", t)
+
+		//return t.AnnounceRekey()
 	}
 	return nil
 }

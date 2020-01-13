@@ -12,10 +12,43 @@ const (
 	DefaultCertificateLocation = "cert"
 
 	// Broadcaster and receiver names
+
 	Sn     = "SN"
 	Vin    = "VIN"
 	Rekey  = "REKEY"
 	Nonce  = "NONCE"
 	SendSn = "SENDSN"
 	Join   = "JOIN"
+
+	// Broadcast
+	SnExName    = "announcesn"
+	VinExName   = "announceVin"
+	RkExName    = "announceRk"
+	NonceExName = "annonceNonce"
+
+	SnQName    = "snQueue"
+	VinQName   = "vinQueue"
+	RkQName    = "rkQueue"
+	NonceQName = "nonceQueue"
+
+	SnConsumerName    = "snConsumer"
+	VinConsumerName   = "vinConsumer"
+	RkConsumerName    = "rkConsumer"
+	NonceConsumerName = "nonceConsumer"
+
+	// P2P
+	SendSnQName        = "sendSnQueue"
+	JoinQName          = "joinQueue"
+	SendSnConsumerName = "sendSnConsumer"
+	JoinConsumerName   = "joinConsumer"
+
+	// Common
+	PubNoWait      = false
+	SubNoWait      = false
+	QueueNoWait    = false
+	BindNoWait     = false
+	ConsumerNoWait = false
+	ConsumerNoAck  = true
+	Immediate      = false
+	RoutingKey     = ""
 )

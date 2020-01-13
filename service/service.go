@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"regexp"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/sauravgsh16/ecu/config"
 	"github.com/sauravgsh16/ecu/domain"
 	"github.com/sauravgsh16/ecu/handler"
+	"github.com/sauravgsh16/ecu/util"
 )
 
 const (
@@ -36,10 +38,7 @@ var (
 type ECU interface {
 	AnnouceNonce() error
 	Close()
-	init(c *ecuConfig) error
-	startconsumers() error
-	multiplexlisteners()
-	handleReceiveNonce(msg *client.Message) error
+	GetDomainID() string
 }
 
 type listenerch struct {
@@ -67,6 +66,8 @@ type ecuService struct {
 	processMux     sync.Mutex
 	mux            sync.RWMutex
 	formingNetwork bool
+	unicastPattern *regexp.Regexp
+	wg             sync.WaitGroup
 }
 
 // LeaderEcu struct
@@ -107,6 +108,7 @@ func (e *ecuService) initializeFields() {
 	e.incoming = make(chan *incoming)
 	e.unicastCh = make(chan *incoming)
 	e.done = make(chan interface{})
+	e.unicastPattern = regexp.MustCompile(`^(?P<type>.*?)\.`)
 }
 
 // TODO
@@ -145,19 +147,6 @@ func (e *ecuService) init(c *ecuConfig) error {
 		}
 	}
 
-	// Register receivers
-	for _, h := range c.receivers {
-		r, err := h()
-		if err != nil {
-			return err
-		}
-		e.receivers[r.GetName()] = &listenerch{
-			h:    r,
-			done: make(chan interface{}),
-			name: r.GetName(),
-		}
-	}
-
 	if err := e.startconsumers(); err != nil {
 		return err
 	}
@@ -183,50 +172,31 @@ func (e *ecuService) startconsumers() error {
 		s.init = true
 	}
 
-	if len(e.receivers) == 0 {
-		return nil
-	}
-
-	for _, r := range e.receivers {
-		ch, er := r.h.StartConsumer(r.done)
-		if er != nil {
-			err = multierror.Append(err, er)
-		}
-		r.ch = ch
-		r.init = true
-	}
-
 	return nil
 }
 
-func (e *ecuService) multiplexlisteners() {
-	var wg sync.WaitGroup
-
-	wg.Add(len(e.subscribers))
-
-	multiplex := func(l *listenerch) {
-		defer wg.Done()
-	loop:
-		for {
-			select {
-			case <-l.done:
-				break loop
-			case msg := <-l.ch:
-				e.incoming <- &incoming{l.name, msg}
-			}
+func (e *ecuService) multiplex(l *listenerch) {
+	defer e.wg.Done()
+loop:
+	for {
+		select {
+		case <-l.done:
+			break loop
+		case msg := <-l.ch:
+			e.incoming <- &incoming{l.name, msg}
 		}
 	}
+}
+
+func (e *ecuService) multiplexlisteners() {
+	e.wg.Add(len(e.subscribers))
 
 	for _, s := range e.subscribers {
-		go multiplex(s)
-	}
-
-	for _, r := range e.receivers {
-		go multiplex(r)
+		go e.multiplex(s)
 	}
 
 	go func() {
-		wg.Wait()
+		e.wg.Wait()
 		close(e.incoming)
 	}()
 }
@@ -274,6 +244,60 @@ func (e *ecuService) aggregateCertNone() ([]byte, error) {
 	return buf.Bytes(), err
 }
 
+func (e *ecuService) createSender(id string, name string, h func(string) (handler.Sender, error)) error {
+	e.mux.Lock()
+	defer e.mux.Unlock()
+
+	fmt.Printf("HEREEEEEEEEEEEEEEEE ------->%s\n", util.JoinString(name, id))
+
+	_, ok := e.senders[util.JoinString(name, id)]
+	if ok {
+		return nil
+	}
+
+	fmt.Printf("CREATING SENDER ------->%s\n", util.JoinString(name, id))
+
+	s, err := h(id)
+	if err != nil {
+		return err
+	}
+	e.senders[s.GetName()] = s
+	return nil
+}
+
+func (e *ecuService) createReceiver(id string, h func(string) (handler.Receiver, error)) error {
+	e.mux.Lock()
+	defer e.mux.Unlock()
+
+	r, err := h(id)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("HEREEEEEEEEEEEEEEEE -------> Creating receiver\n")
+
+	done := make(chan interface{})
+
+	ch, err := r.StartConsumer(done)
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+
+	e.receivers[r.GetName()] = &listenerch{
+		ch:   ch,
+		h:    r,
+		done: done,
+		name: r.GetName(),
+		init: true,
+	}
+
+	fmt.Printf("CREATED RECEIVER ------->%s\n", r.GetName())
+
+	e.wg.Add(1)
+	go e.multiplex(e.receivers[r.GetName()])
+	return nil
+}
+
 // NewEcu returns a new ECU
 func NewEcu(kind int) (ECU, error) {
 	switch kind {
@@ -294,6 +318,10 @@ func StartListeners(e ECU) {
 	case *MemberEcu:
 		t.StartListeners()
 	}
+}
+
+func (e *ecuService) GetDomainID() string {
+	return e.domain.ID
 }
 
 func (e *ecuService) AnnouceNonce() error {

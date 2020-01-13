@@ -15,34 +15,19 @@ func main() {
 
 	fmt.Printf("Started %T\n", c)
 
-	resp, err := c.Register()
+	_, err = c.Register()
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
 
 	forever := make(chan interface{})
 
-	fmt.Printf("Registered leader with id: %d\n\n\n\n", resp.Id)
+	fmt.Printf("Registered leader\n\n\n\n")
 
-	wait := make(chan bool)
+	d := make(chan interface{})
+	idCh, errch := c.Wait(d)
 
-	go func() {
-		r, err := c.Wait(resp.Id)
-		if err != nil {
-			close(wait)
-			return
-		}
-		select {
-		case wait <- r.Result:
-		}
-	}()
-
-	_, ok := <-wait
-	if !ok {
-		log.Fatalf("Could not find valid ECUs")
-	}
-	close(wait)
-	c.CloseClient()
+	c.StartReceiveRoutines(idCh, errch)
 
 	c.Initiate()
 

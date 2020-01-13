@@ -28,6 +28,39 @@ func newLeader(c *ecuConfig) (*LeaderEcu, error) {
 	return l, nil
 }
 
+// CreateUnicastHandlers creates handler which leaders require
+func (l *LeaderEcu) CreateUnicastHandlers(idCh chan string, errCh chan error) {
+	go func() {
+	loop:
+		for {
+			select {
+			case id := <-idCh:
+				go l.createHandlers(id)
+			case err := <-errCh:
+				log.Printf(err.Error())
+				break loop
+			}
+		}
+	}()
+}
+
+func (l *LeaderEcu) createHandlers(id string) {
+	l.createJoinReceiver(id)
+	l.createSnSender(id)
+}
+
+func (l *LeaderEcu) createSnSender(id string) {
+	if err := l.createSender(id, config.SendSn, handler.NewSendSnSender); err != nil {
+		log.Fatalf(err.Error())
+	}
+}
+
+func (l *LeaderEcu) createJoinReceiver(id string) {
+	if err := l.createReceiver(id, handler.NewJoinReceiver); err != nil {
+		log.Fatalf(err.Error())
+	}
+}
+
 // StartListeners starts the listeners for a leader
 func (l *LeaderEcu) StartListeners() {
 	go func() {
@@ -65,7 +98,8 @@ func (l *LeaderEcu) handleUnicast() {
 			case <-l.done:
 				return
 			case i := <-l.unicastCh:
-				switch i.name {
+				name := l.unicastPattern.FindStringSubmatch(i.name)[1]
+				switch name {
 
 				case config.Join:
 					go l.handleJoin(i.msg)
@@ -167,30 +201,7 @@ func (l *LeaderEcu) handleJoin(msg *client.Message) {
 
 	log.Printf("Received Join from AppID: %s\n", msg.Metadata.Get(appKey))
 
-	if err := l.registerSnSender(appID); err != nil {
-		// TODO: improve error handling
-		// TODO: panicing for now
-		panic(fmt.Sprintf("%s: %s", errSendSnRegister, err.Error()))
-	}
 	go l.SendSn(appID)
-}
-
-func (l *LeaderEcu) registerSnSender(appID string) error {
-	l.mux.Lock()
-	defer l.mux.Unlock()
-
-	_, ok := l.senders[appID]
-	if ok {
-		return nil
-	}
-
-	h, err := handler.NewSendSnSender(appID)
-	if err != nil {
-		return err
-	}
-
-	l.senders[h.GetName()] = h
-	return nil
 }
 
 // SendSn sends Sn to memeber ECUs

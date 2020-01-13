@@ -11,11 +11,34 @@ import (
 	"github.com/sauravgsh16/ecu/util"
 )
 
+const (
+	sep = "."
+)
+
 func newMember(c *ecuConfig) (*MemberEcu, error) {
 	m := new(MemberEcu)
 	m.initializeFields()
 	m.init(c)
 	return m, nil
+}
+
+// CreateUnicastHandlers creates handler which memebers require
+func (m *MemberEcu) CreateUnicastHandlers(idCh chan string, errCh chan error) {
+	select {
+	case <-idCh:
+		go m.createHandlers()
+	case err := <-errCh:
+		log.Fatalf(err.Error())
+	}
+}
+
+func (m *MemberEcu) createHandlers() {
+	if err := m.createReceiver(m.domain.ID, handler.NewSendSnReceiver); err != nil {
+		log.Fatalf(err.Error())
+	}
+	if err := m.createSender(m.domain.ID, config.Join, handler.NewJoinSender); err != nil {
+		log.Fatalf(err.Error())
+	}
 }
 
 // StartListeners starts the listeners for a member
@@ -35,6 +58,8 @@ func (m *MemberEcu) StartListeners() {
 				case config.Vin:
 					go m.handleAnnounceVin(i.msg)
 
+				case config.Rekey:
+
 				default:
 					m.unicastCh <- i
 				}
@@ -52,7 +77,8 @@ func (m *MemberEcu) handleUnicast() {
 			case <-m.done:
 				return
 			case i := <-m.unicastCh:
-				switch i.name {
+				name := m.unicastPattern.FindStringSubmatch(i.name)[1]
+				switch name {
 
 				case config.SendSn:
 					go m.handleSn(i.msg)
@@ -69,11 +95,11 @@ func (m *MemberEcu) handleUnicast() {
 }
 
 // SendJoin sends join request to the leader
-func (m *MemberEcu) SendJoin(id string) {
+func (m *MemberEcu) SendJoin() {
 	m.mux.RLock()
 	defer m.mux.RUnlock()
 
-	sender, ok := m.senders[util.JoinString(config.Join, id)]
+	sender, ok := m.senders[util.JoinString(config.Join, m.domain.ID)]
 	if !ok {
 		panic("join Handler not found")
 	}
@@ -85,7 +111,7 @@ func (m *MemberEcu) SendJoin(id string) {
 		fmt.Printf("Error while creating payload: %s", err.Error())
 	}
 
-	log.Printf("Sent Join to - AppID: %s\n", id)
+	log.Printf("Sent Join from - AppID: %s\n", m.domain.ID)
 
 	if err := sender.Send(m.generateMessage(payload)); err != nil {
 		// TODO: Better Error Handling
@@ -96,6 +122,11 @@ func (m *MemberEcu) SendJoin(id string) {
 
 // AnnounceRekey announces rekey to the networks
 func (m *MemberEcu) AnnounceRekey() error {
+	if m.getnetworkformationflag() {
+		// Signifies that it has already taken part in n/w formation
+		return nil
+	}
+
 	m.domain.ClearNonceTable()
 
 	h, ok := m.broadcasters[config.Rekey]
@@ -155,35 +186,5 @@ func (m *MemberEcu) handleAnnounceSn(msg *client.Message) {
 		return
 	}
 
-	appID, err := msg.Metadata.Verify(appKey)
-	if err != nil {
-		// TODO: improve error handling
-		// TODO: panicing for now
-		panic(fmt.Sprintf("%s: %s", appKey, err.Error()))
-	}
-
-	if err := m.registerJoinSender(appID); err != nil {
-		// TODO: improve error handling
-		// panicing for now
-		panic(fmt.Sprintf("%s: %s", errJoinRegister, err.Error()))
-	}
-	go m.SendJoin(appID)
-}
-
-func (m *MemberEcu) registerJoinSender(appID string) error {
-	m.mux.Lock()
-	defer m.mux.Unlock()
-
-	_, ok := m.senders[appID]
-	if ok {
-		return nil
-	}
-
-	h, err := handler.NewJoinSender(appID)
-	if err != nil {
-		return err
-	}
-
-	m.senders[h.GetName()] = h
-	return nil
+	go m.SendJoin()
 }
