@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
@@ -12,13 +13,15 @@ import (
 )
 
 const (
-	sep = "."
+	sep          = "."
+	rekeytimeout = 10
 )
 
 func newMember(c *ecuConfig) (*MemberEcu, error) {
 	m := new(MemberEcu)
 	m.initializeFields()
 	m.init(c)
+	m.first = true
 	return m, nil
 }
 
@@ -41,6 +44,27 @@ func (m *MemberEcu) createHandlers() {
 	}
 }
 
+func (m *MemberEcu) rekeytimer(reset chan bool) {
+	timer := time.NewTimer(rekeytimeout * time.Second)
+	go func() {
+		for {
+			select {
+			case <-timer.C:
+				break
+			case <-reset:
+				timer.Reset(rekeytimeout * time.Second)
+			}
+			// Need to check if running
+			// If exited - create run goroutine to create new timer
+		}
+		// TODO: need to create Sv.
+		// m.createSv()
+		// close(reset) maybe - need to check
+
+		// Many changes - need to check document
+	}()
+}
+
 // StartListeners starts the listeners for a member
 func (m *MemberEcu) StartListeners() {
 	go func() {
@@ -52,14 +76,13 @@ func (m *MemberEcu) StartListeners() {
 					go m.handleReceiveNonce(i.msg)
 
 				case config.Sn:
-					m.domain.ClearNonceTable()
 					go m.handleAnnounceSn(i.msg)
 
 				case config.Vin:
 					go m.handleAnnounceVin(i.msg)
 
 				case config.Rekey:
-
+					go m.handleRekey(i.msg)
 				default:
 					m.unicastCh <- i
 				}
@@ -94,6 +117,38 @@ func (m *MemberEcu) handleUnicast() {
 	}()
 }
 
+// AnnounceRekey announces rekey to the networks
+func (m *MemberEcu) AnnounceRekey() error {
+	if m.first {
+		if m.getnetworkformationflag() {
+			// Signifies that it has already taken part in n/w formation
+			return nil
+		}
+
+		h, ok := m.broadcasters[config.Rekey]
+		if !ok {
+			return fmt.Errorf("announce rekey handler not found")
+		}
+
+		empty := make([]byte, 8)
+		rkmsg := m.generateMessage(empty)
+		rkmsg.Metadata.Set(contentType, "rekey")
+
+		log.Printf("Sending Rekey From AppID - %s\n", m.domain.ID)
+
+		if err := h.Send(rkmsg); err != nil {
+			return err
+		}
+
+		m.mux.Lock()
+		defer m.mux.Unlock()
+
+		m.rekeyed = true
+	}
+
+	return m.AnnouceNonce()
+}
+
 // SendJoin sends join request to the leader
 func (m *MemberEcu) SendJoin() {
 	m.mux.RLock()
@@ -120,30 +175,22 @@ func (m *MemberEcu) SendJoin() {
 	}
 }
 
-// AnnounceRekey announces rekey to the networks
-func (m *MemberEcu) AnnounceRekey() error {
+func (m *MemberEcu) handleAnnounceSn(msg *client.Message) {
+	log.Printf("Received AnnounceSn From AppID: - %s\n", msg.Metadata.Get(appKey))
+
 	if m.getnetworkformationflag() {
-		// Signifies that it has already taken part in n/w formation
-		return nil
+		return
 	}
 
-	m.domain.ClearNonceTable()
-
-	h, ok := m.broadcasters[config.Rekey]
-	if !ok {
-		return fmt.Errorf("announce rekey handler not found")
+	if bytes.Equal(msg.Payload, []byte(m.domain.GetSn())) {
+		log.Println("Received Sn is equal to Sn stored. Returning")
+		return
 	}
 
-	empty := make([]byte, 8)
-	rkmsg := m.generateMessage(empty)
-	rkmsg.Metadata.Set(contentType, "rekey")
+	// set n/w formation flag true, to ignore any rekey message
+	m.setnetworkformationflag(true)
 
-	log.Printf("Sending Rekey From AppID - %s\n", m.domain.ID)
-
-	if err := h.Send(rkmsg); err != nil {
-		return err
-	}
-	return nil
+	go m.SendJoin()
 }
 
 func (m *MemberEcu) handleAnnounceVin(msg *client.Message) {
@@ -160,31 +207,22 @@ func (m *MemberEcu) handleAnnounceVin(msg *client.Message) {
 }
 
 func (m *MemberEcu) handleSn(msg *client.Message) {
-
 	log.Printf("Received Sn From AppID: - %s\n", msg.Metadata.Get(appKey))
-
-	if bytes.Equal(msg.Payload, []byte(m.domain.GetSn())) {
-		return
-	}
 
 	if err := m.domain.SetSn(msg.Payload); err != nil {
 		// TODO: Better Error Handling
 		// Add logger
 		fmt.Printf("error setting network key Sn: %s", err.Error())
 	}
+	m.setnetworkformationflag(false)
 }
 
-func (m *MemberEcu) handleAnnounceSn(msg *client.Message) {
+func (m *MemberEcu) handleRekey(msg *client.Message) {
+	log.Printf("Received rekey from AppID: %s\n", msg.Metadata.Get(appKey))
 
-	log.Printf("Received AnnounceSn From AppID: - %s\n", msg.Metadata.Get(appKey))
-
-	// set n/w formation flag true, to ignore any rekey message
-	m.setnetworkformationflag(true)
-
-	// In case of member - Sn represents hash(Sn)
-	if bytes.Equal(msg.Payload, []byte(m.domain.GetSn())) {
+	if !m.rekeyed {
+		m.AnnounceRekey()
 		return
 	}
-
-	go m.SendJoin()
+	m.AnnouceNonce()
 }

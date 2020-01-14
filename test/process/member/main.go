@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/sauravgsh16/ecu/controller"
 )
@@ -28,6 +29,8 @@ func main() {
 	idCh, errch := c.Wait(d)
 
 	c.StartReceiveRoutines(idCh, errch)
+
+	time.Sleep(5 * time.Second)
 
 	c.Initiate()
 

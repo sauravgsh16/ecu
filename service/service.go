@@ -81,6 +81,8 @@ type LeaderEcu struct {
 // MemberEcu struct
 type MemberEcu struct {
 	ecuService
+	first   bool
+	rekeyed bool
 }
 
 func (e *ecuService) handleReceiveNonce(msg *client.Message) error {
@@ -248,14 +250,10 @@ func (e *ecuService) createSender(id string, name string, h func(string) (handle
 	e.mux.Lock()
 	defer e.mux.Unlock()
 
-	fmt.Printf("HEREEEEEEEEEEEEEEEE ------->%s\n", util.JoinString(name, id))
-
 	_, ok := e.senders[util.JoinString(name, id)]
 	if ok {
 		return nil
 	}
-
-	fmt.Printf("CREATING SENDER ------->%s\n", util.JoinString(name, id))
 
 	s, err := h(id)
 	if err != nil {
@@ -274,8 +272,6 @@ func (e *ecuService) createReceiver(id string, h func(string) (handler.Receiver,
 		return err
 	}
 
-	fmt.Printf("HEREEEEEEEEEEEEEEEE -------> Creating receiver\n")
-
 	done := make(chan interface{})
 
 	ch, err := r.StartConsumer(done)
@@ -290,8 +286,6 @@ func (e *ecuService) createReceiver(id string, h func(string) (handler.Receiver,
 		name: r.GetName(),
 		init: true,
 	}
-
-	fmt.Printf("CREATED RECEIVER ------->%s\n", r.GetName())
 
 	e.wg.Add(1)
 	go e.multiplex(e.receivers[r.GetName()])

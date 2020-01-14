@@ -72,13 +72,9 @@ func (l *LeaderEcu) StartListeners() {
 					go l.handleReceiveNonce(i.msg)
 
 				case config.Rekey:
+					l.domain.RemoveFromNonceTable(i.msg.Metadata.Get(appKey).(string))
 
 					log.Printf("Received Rekey From appID: - %s\n", i.msg.Metadata.Get(appKey))
-
-					if l.getnetworkformationflag() {
-						continue
-					}
-					l.domain.ClearNonceTable()
 					go l.AnnounceSn()
 
 				default:
@@ -118,7 +114,6 @@ func (l *LeaderEcu) handleUnicast() {
 func (l *LeaderEcu) AnnounceSn() error {
 	// Set network formation flag true - so that any rekey message
 	// during n/w formation will be ignored.
-	l.setnetworkformationflag(true)
 
 	l.mux.RLock()
 	defer l.mux.RUnlock()
@@ -213,18 +208,18 @@ func (l *LeaderEcu) SendSn(id string) {
 	if !ok {
 		panic("sender not found")
 	}
+
+	log.Printf("Send Sn to AppID: - %s\n", id)
+
 	// TODO: process Sn
 	// TODO: ITK logic to be added
+	// Sending Hash of Sn for now
+	// Sn sent here is (CT || mac(Snl-ecu-mac, CT)) - 32 bytes
 
-	log.Printf("Send Sn to AppID: - %s\n\n\n\n\n", id)
-
-	sn := l.domain.GetSn()
-	if err := sender.Send(l.generateMessage([]byte(sn))); err != nil {
+	hashSn := util.GenerateHash([]byte(l.domain.GetSn()))
+	if err := sender.Send(l.generateMessage([]byte(hashSn))); err != nil {
 		// TODO: Better Error Handling
 		// Add logger
 		fmt.Printf("Error while sending message: %s", err.Error())
 	}
-	// Set network formation flag false - so that any rekey message received
-	// during n/w formation will be start network formation again.
-	l.setnetworkformationflag(false)
 }

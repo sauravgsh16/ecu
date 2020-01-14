@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"time"
@@ -194,14 +193,11 @@ func (c *controller) CloseClient() {
 func (c *controller) Initiate() error {
 	switch t := c.service.(type) {
 	case *service.LeaderEcu:
+		return t.AnnounceSn()
 
-		fmt.Printf("%+v\n", t)
-
-		// return t.AnnounceSn()
 	case *service.MemberEcu:
-		fmt.Printf("%+v\n", t)
+		return t.AnnounceRekey()
 
-		//return t.AnnounceRekey()
 	}
 	return nil
 }

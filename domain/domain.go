@@ -137,6 +137,14 @@ func (e *Ecu) AddToNonceTable(id string, nonce []byte) error {
 	return nil
 }
 
+// RemoveFromNonceTable removes key-value pair from map
+func (e *Ecu) RemoveFromNonceTable(id string) {
+	e.nonceMux.Lock()
+	e.nonceMux.Unlock()
+
+	delete(e.nonceAll, id)
+}
+
 // GenerateSn generates and sets the Ecu Sn
 func (e *Ecu) GenerateSn() error {
 	if e.Kind != leader {
