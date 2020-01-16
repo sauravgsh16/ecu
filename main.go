@@ -1,20 +1,40 @@
 package main
 
 import (
+	"bytes"
+	"crypto/rand"
 	"fmt"
-	"regexp"
+	"log"
+	"time"
 )
 
-func main() {
-	str := "Join.abcd-efhecdsfks-sdfsdf2q312"
-	pat := regexp.MustCompile(`^(?P<type>.*?)\.`)
-	match := pat.FindStringSubmatch(str)
-
-	fmt.Printf("%v: %s\n", pat.SubexpNames(), match)
+type mytimer struct {
+	*time.Timer
+	end time.Time
 }
 
-func test(event string) {
+func main() {
+	b := make([]byte, 16)
+	buf := bytes.NewBuffer(b)
 
+	if _, err := rand.Read(buf.Bytes()); err != nil {
+		log.Fatalf(err.Error())
+	}
+	log.Println(buf.Bytes())
+}
+
+func selectTimer(t *mytimer, f chan bool) {
+	go func() {
+		for {
+			select {
+			case <-t.C:
+				fmt.Println("returning after timer expired")
+			}
+			fmt.Println("exiting go routine")
+			break
+		}
+		f <- true
+	}()
 }
 
 /*

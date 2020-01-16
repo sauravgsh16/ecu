@@ -158,3 +158,8 @@ Doubts:
 ---------------------------------------------------------------------
                 TODO ****
 1) Handle Rekey case - received by member. Need to add RekeySubscriber in member.config
+
+
+---------------------------------------------------------------------
+                **** TODO ****
+1) serv.go --> StartListeners

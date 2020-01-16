@@ -13,8 +13,7 @@ import (
 )
 
 const (
-	sep          = "."
-	rekeytimeout = 10
+	sep = "."
 )
 
 func newMember(c *ecuConfig) (*MemberEcu, error) {
@@ -44,6 +43,7 @@ func (m *MemberEcu) createHandlers() {
 	}
 }
 
+/*
 func (m *MemberEcu) rekeytimer(reset chan bool) {
 	timer := time.NewTimer(rekeytimeout * time.Second)
 	go func() {
@@ -64,6 +64,7 @@ func (m *MemberEcu) rekeytimer(reset chan bool) {
 		// Many changes - need to check document
 	}()
 }
+*/
 
 // StartListeners starts the listeners for a member
 func (m *MemberEcu) StartListeners() {
@@ -71,9 +72,6 @@ func (m *MemberEcu) StartListeners() {
 		for {
 			for i := range m.incoming {
 				switch i.name {
-
-				case config.Nonce:
-					go m.handleReceiveNonce(i.msg)
 
 				case config.Sn:
 					go m.handleAnnounceSn(i.msg)
@@ -83,6 +81,10 @@ func (m *MemberEcu) StartListeners() {
 
 				case config.Rekey:
 					go m.handleRekey(i.msg)
+
+				case config.Nonce:
+					go m.handleReceiveNonce(i.msg)
+
 				default:
 					m.unicastCh <- i
 				}
@@ -139,11 +141,6 @@ func (m *MemberEcu) AnnounceRekey() error {
 		if err := h.Send(rkmsg); err != nil {
 			return err
 		}
-
-		m.mux.Lock()
-		defer m.mux.Unlock()
-
-		m.rekeyed = true
 	}
 
 	return m.AnnouceNonce()
@@ -220,9 +217,40 @@ func (m *MemberEcu) handleSn(msg *client.Message) {
 func (m *MemberEcu) handleRekey(msg *client.Message) {
 	log.Printf("Received rekey from AppID: %s\n", msg.Metadata.Get(appKey))
 
-	if !m.rekeyed {
-		m.AnnounceRekey()
-		return
+	// TODO : add mux -- ** important **
+
+	m.first = false
+	m.repeat = true
+
+	if m.rktimer.Running() {
+		m.rktimer.Reset(rekeytimeout * time.Second)
 	}
-	m.AnnouceNonce()
+}
+
+func (m *MemberEcu) handleReceiveNonce(msg *client.Message) error {
+	log.Printf("Received Nonce :- From - %s\n", msg.Metadata.Get(appKey).(string))
+
+	ctype, err := msg.Metadata.Verify(contentType)
+	if err != nil && ctype != "nonce" {
+		return errInvalidContentType
+	}
+
+	appID, err := msg.Metadata.Verify(appKey)
+	if err != nil {
+		return errAppIDNotFound
+	}
+
+	m.domain.AddToNonceTable(appID, msg.Payload)
+
+	if m.rktimer.Running() {
+		if m.repeat {
+			if err := m.AnnouceNonce(); err != nil {
+				return err
+			}
+			return nil
+		}
+		m.rktimer.Reset(rekeytimeout * time.Second)
+		return nil
+	}
+	return m.AnnounceRekey()
 }

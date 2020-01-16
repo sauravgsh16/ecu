@@ -12,8 +12,10 @@ import (
 	"sync"
 
 	"github.com/gofrs/uuid"
+	"github.com/keep94/appcommon/kdf"
 
 	"github.com/sauravgsh16/ecu/config"
+	"github.com/sauravgsh16/ecu/util"
 )
 
 const (
@@ -24,10 +26,12 @@ const (
 )
 
 const (
-	snsize    = 16
-	noncesize = 16
-	encKey    = 64
-	mackey    = 64
+	snsize        = 16
+	noncesize     = 16
+	encKey        = 64
+	mackey        = 64
+	secocRekeyEnc = 0
+	secocRekeyMac = 1
 )
 
 var (
@@ -45,7 +49,9 @@ type Ecu struct {
 	ID       string
 	VIN      string            // Vehicle identification number
 	sn       []byte            // Network key
-	nonce    []byte            // nonce - unique identification
+	svenc    []byte            // Enc Calculated Key
+	svmac    []byte            // Mac Calculated key
+	myNonce  []byte            // nonce - unique identification
 	encKey   []byte            // EncKey -Sv-ENC - Ecu key for encryption
 	macKey   []byte            // Sv-MAC - Ecu key for generation MAC (also known as tag)
 	Kind     int               // Ecu Kind: leader or member
@@ -67,9 +73,11 @@ func NewEcu(kind int) (*Ecu, error) {
 		encKey:   make([]byte, encKey),
 		macKey:   make([]byte, mackey),
 		sn:       make([]byte, snsize),
-		nonce:    make([]byte, noncesize),
+		myNonce:  make([]byte, noncesize),
 		nonceAll: make(map[string][]byte, 0),
 		Certs:    make(map[string][]byte, 0),
+		svenc:    make([]byte, 0),
+		svmac:    make([]byte, 0),
 	}
 	dir, err := os.Getwd()
 	if err != nil {
@@ -112,7 +120,7 @@ func (e *Ecu) generateNonce() error {
 		return err
 	}
 
-	e.nonce = buf.Bytes()
+	e.myNonce = buf.Bytes()
 	return nil
 }
 
@@ -166,7 +174,18 @@ func (e *Ecu) GenerateSn() error {
 
 // GetNonce returns the ecu nonce
 func (e *Ecu) GetNonce() []byte {
-	return e.nonce
+	e.mux.Lock()
+	defer e.mux.Unlock()
+
+	return e.myNonce
+}
+
+// ResetNonce resets the ecu's my_nonce
+func (e *Ecu) ResetNonce() error {
+	e.mux.Lock()
+	defer e.mux.Unlock()
+
+	return e.generateNonce()
 }
 
 // GetSn returns the Ecu Sn string
@@ -192,6 +211,24 @@ func (e *Ecu) SetSn(sn []byte) error {
 
 	e.sn = sn
 	return nil
+}
+
+// CalculateSv calculates the sv based on Sn and all the received nonces
+func (e *Ecu) CalculateSv() {
+	e.nonceMux.Lock()
+	e.nonceMux.Unlock()
+
+	all := make([]byte, 0)
+	all = append(all, e.myNonce...)
+
+	for _, v := range e.nonceAll {
+		all = append(all, v...)
+	}
+
+	// TODO - apply KDF algorithm
+	nonceAll := []byte(util.GenerateHash(all))
+	e.svenc = kdf.KDF(e.sn, nonceAll, secocRekeyEnc)
+	e.svmac = kdf.KDF(e.sn, nonceAll, secocRekeyMac)
 }
 
 func (e *Ecu) loadCerts() error {
