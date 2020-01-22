@@ -11,6 +11,7 @@ import (
 type Sender interface {
 	Send(msg *client.Message) error
 	GetName() string
+	Close() error
 }
 
 // Receiver interface
@@ -30,6 +31,10 @@ func (s *send) Send(msg *client.Message) error {
 
 func (s *send) GetName() string {
 	return s.name
+}
+
+func (s *send) Close() error {
+	return s.p.Close()
 }
 
 type receive struct {

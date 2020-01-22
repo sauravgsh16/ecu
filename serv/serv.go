@@ -119,11 +119,63 @@ func (e *ecuService) initializeFields() {
 	e.first = true
 }
 
-// TODO
-func (e *ecuService) closeReceivers() {}
+func (e *ecuService) closeReceivers(wg *sync.WaitGroup) {
+	wg.Add(len(e.receivers))
+	wg.Add(len(e.subscribers))
 
-// TODO
-func (e *ecuService) Close() {}
+	go func() {
+		for _, r := range e.receivers {
+			select {
+			case r.done <- true:
+			default:
+				log.Printf("done channel blocking - for %s\n", r.name)
+			}
+			wg.Done()
+		}
+	}()
+
+	go func() {
+		for _, s := range e.subscribers {
+			select {
+			case s.done <- true:
+			default:
+				log.Printf("done channel blocking - for %s\n", s.name)
+			}
+			wg.Done()
+		}
+	}()
+}
+
+func (e *ecuService) closeSenders(wg *sync.WaitGroup) {
+
+	wg.Add(len(e.broadcasters))
+	wg.Add(len(e.senders))
+
+	go func() {
+		for _, b := range e.broadcasters {
+			b.Close()
+			wg.Done()
+		}
+	}()
+
+	go func() {
+		for _, s := range e.senders {
+			s.Close()
+			wg.Done()
+		}
+	}()
+}
+
+// Close calls the appropriate means of closing all the senders and receivers
+// attached to the ecu
+func (e *ecuService) Close() {
+	var wg *sync.WaitGroup
+
+	go e.closeSenders(wg)
+	go e.closeReceivers(wg)
+
+	wg.Wait()
+}
 
 func (e *ecuService) init(c *ecuConfig) error {
 	var err error
