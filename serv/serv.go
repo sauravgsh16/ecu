@@ -306,10 +306,6 @@ func (e *ecuService) handleRekey(msg *client.Message) {
 	if e.rktimer.Running() {
 		e.rktimer.Reset(rekeytimeout * time.Second)
 	}
-
-	if err := e.domain.ResetNonce(); err != nil {
-		log.Printf("error resetting my_nonce: %s", err.Error())
-	}
 }
 
 func (e *ecuService) handleReceiveNonce(msg *client.Message) error {
@@ -371,6 +367,16 @@ func (e *ecuService) AnnounceRekey() error {
 }
 
 func (e *ecuService) annouceNonce() error {
+	if !e.first && !e.rktimer.Running() {
+		// This logic is added here to handle case :-
+		// when we receive "my_nonce" for other ecu, and the rekey timer
+		// for this ecu has stopped. We thus need to generate a new nonce
+		// and use this newly created nonce for sending.
+		if err := e.domain.ResetNonce(); err != nil {
+			log.Printf("error resetting my_nonce: %s", err.Error())
+		}
+	}
+
 	nonce := e.domain.GetNonce()
 	msg := e.generateMessage(nonce)
 
@@ -395,8 +401,16 @@ func (e *ecuService) annouceNonce() error {
 
 	e.repeat = false
 
-	e.startTimerToGatherNonce()
+	if e.rktimer.Running() {
+		// Case when - if we reach this code block
+		// from 'repeat nonce', we know that we have
+		// rekey timeout goroutine running, we just need
+		// to reset the time
+		e.rktimer.Reset(rekeytimeout * time.Second)
+		return nil
+	}
 
+	e.startTimerToGatherNonce()
 	return nil
 }
 

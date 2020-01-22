@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/sauravgsh16/ecu/config"
-	"github.com/sauravgsh16/ecu/service"
+	service "github.com/sauravgsh16/ecu/serv"
 	supervisor "github.com/sauravgsh16/supervisor/server"
 )
 
@@ -28,7 +28,7 @@ type Controller interface {
 	Register() (*supervisor.RegisterNodeResponse, error)
 	Wait(done chan interface{}) (chan string, chan error)
 	CloseClient()
-	StartReceiveRoutines(w chan string, errCh chan error)
+	StartReceiverRoutines(w chan string, errCh chan error)
 }
 
 type controller struct {
@@ -175,7 +175,7 @@ func (c *controller) Wait(done chan interface{}) (chan string, chan error) {
 	return idCh, errch
 }
 
-func (c *controller) StartReceiveRoutines(w chan string, errCh chan error) {
+func (c *controller) StartReceiverRoutines(w chan string, errCh chan error) {
 	switch t := c.service.(type) {
 	case *service.LeaderEcu:
 		t.CreateUnicastHandlers(w, errCh)
@@ -193,6 +193,7 @@ func (c *controller) CloseClient() {
 func (c *controller) Initiate() error {
 	switch t := c.service.(type) {
 	case *service.LeaderEcu:
+		go t.AnnounceRekey()
 		return t.AnnounceSn()
 
 	case *service.MemberEcu:

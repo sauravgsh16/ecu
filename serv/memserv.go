@@ -7,6 +7,7 @@ import (
 
 	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
+	"github.com/sauravgsh16/ecu/handler"
 	"github.com/sauravgsh16/ecu/util"
 )
 
@@ -15,6 +16,27 @@ func newMember(c *ecuConfig) (*MemberEcu, error) {
 	m.initializeFields()
 	m.init(c)
 	return m, nil
+}
+
+// CreateUnicastHandlers creates handler which memebers require
+func (m *MemberEcu) CreateUnicastHandlers(idCh chan string, errCh chan error) {
+	go func() {
+		select {
+		case <-idCh:
+			go m.createHandlers()
+		case err := <-errCh:
+			log.Fatalf(err.Error())
+		}
+	}()
+}
+
+func (m *MemberEcu) createHandlers() {
+	if err := m.createReceiver(m.domain.ID, handler.NewSendSnReceiver); err != nil {
+		log.Fatalf(err.Error())
+	}
+	if err := m.createSender(m.domain.ID, config.Join, handler.NewJoinSender); err != nil {
+		log.Fatalf(err.Error())
+	}
 }
 
 // StartListeners starts the listeners for a member
@@ -96,7 +118,6 @@ func (m *MemberEcu) handleAnnounceVin(msg *client.Message) {
 
 	// TODO : ******************
 	log.Printf("Received VIN From AppID - %s\n", msg.Metadata.Get(appKey))
-
 	fmt.Println("Not sure what needs to done here")
 	// fmt.Printf("Printing the received message: %+v\n", msg)
 

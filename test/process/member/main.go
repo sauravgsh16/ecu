@@ -28,7 +28,7 @@ func main() {
 	d := make(chan interface{})
 	idCh, errch := c.Wait(d)
 
-	c.StartReceiveRoutines(idCh, errch)
+	c.StartReceiverRoutines(idCh, errch)
 
 	time.Sleep(5 * time.Second)
 

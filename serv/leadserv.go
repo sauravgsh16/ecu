@@ -72,8 +72,8 @@ func (l *LeaderEcu) StartListeners() {
 					go l.handleReceiveNonce(i.msg)
 
 				case config.Rekey:
-					go l.AnnounceSn()
 					log.Printf("Received Rekey From appID: - %s\n", i.msg.Metadata.Get(appKey))
+					go l.AnnounceSn()
 					go l.handleRekey(i.msg)
 
 				default:
