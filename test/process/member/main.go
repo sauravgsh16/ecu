@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/sauravgsh16/ecu/controller"
+	"github.deere.com/sg30983/ecu/controller"
 )
 
 func main() {

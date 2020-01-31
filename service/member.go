@@ -4,34 +4,30 @@ import (
 	"bytes"
 	"fmt"
 	"log"
-	"time"
 
-	"github.com/sauravgsh16/ecu/client"
-	"github.com/sauravgsh16/ecu/config"
-	"github.com/sauravgsh16/ecu/handler"
-	"github.com/sauravgsh16/ecu/util"
-)
-
-const (
-	sep = "."
+	"github.deere.com/sg30983/ecu/client"
+	"github.deere.com/sg30983/ecu/config"
+	"github.deere.com/sg30983/ecu/handler"
+	"github.deere.com/sg30983/ecu/util"
 )
 
 func newMember(c *ecuConfig) (*MemberEcu, error) {
 	m := new(MemberEcu)
 	m.initializeFields()
 	m.init(c)
-	m.first = true
 	return m, nil
 }
 
 // CreateUnicastHandlers creates handler which memebers require
 func (m *MemberEcu) CreateUnicastHandlers(idCh chan string, errCh chan error) {
-	select {
-	case <-idCh:
-		go m.createHandlers()
-	case err := <-errCh:
-		log.Fatalf(err.Error())
-	}
+	go func() {
+		select {
+		case <-idCh:
+			go m.createHandlers()
+		case err := <-errCh:
+			log.Fatalf(err.Error())
+		}
+	}()
 }
 
 func (m *MemberEcu) createHandlers() {
@@ -42,29 +38,6 @@ func (m *MemberEcu) createHandlers() {
 		log.Fatalf(err.Error())
 	}
 }
-
-/*
-func (m *MemberEcu) rekeytimer(reset chan bool) {
-	timer := time.NewTimer(rekeytimeout * time.Second)
-	go func() {
-		for {
-			select {
-			case <-timer.C:
-				break
-			case <-reset:
-				timer.Reset(rekeytimeout * time.Second)
-			}
-			// Need to check if running
-			// If exited - create run goroutine to create new timer
-		}
-		// TODO: need to create Sv.
-		// m.createSv()
-		// close(reset) maybe - need to check
-
-		// Many changes - need to check document
-	}()
-}
-*/
 
 // StartListeners starts the listeners for a member
 func (m *MemberEcu) StartListeners() {
@@ -102,7 +75,7 @@ func (m *MemberEcu) handleUnicast() {
 			case <-m.done:
 				return
 			case i := <-m.unicastCh:
-				name := m.unicastPattern.FindStringSubmatch(i.name)[1]
+				name := m.unicastRe.FindStringSubmatch(i.name)[1]
 				switch name {
 
 				case config.SendSn:
@@ -119,31 +92,37 @@ func (m *MemberEcu) handleUnicast() {
 	}()
 }
 
-// AnnounceRekey announces rekey to the networks
-func (m *MemberEcu) AnnounceRekey() error {
-	if m.first {
+func (m *MemberEcu) handleAnnounceSn(msg *client.Message) {
+	log.Printf("Received AnnounceSn From AppID: - %s\n", msg.Metadata.Get(appKey))
+
+	/*
 		if m.getnetworkformationflag() {
-			// Signifies that it has already taken part in n/w formation
-			return nil
+			return
 		}
+	*/
 
-		h, ok := m.broadcasters[config.Rekey]
-		if !ok {
-			return fmt.Errorf("announce rekey handler not found")
-		}
-
-		empty := make([]byte, 8)
-		rkmsg := m.generateMessage(empty)
-		rkmsg.Metadata.Set(contentType, "rekey")
-
-		log.Printf("Sending Rekey From AppID - %s\n", m.domain.ID)
-
-		if err := h.Send(rkmsg); err != nil {
-			return err
-		}
+	if bytes.Equal(msg.Payload, []byte(m.domain.GetSn())) {
+		log.Println("Received Sn is equal to Sn stored. Returning")
+		return
 	}
 
-	return m.AnnouceNonce()
+	/*
+		// set n/w formation flag true, to ignore any rekey message
+		m.setnetworkformationflag(true)
+	*/
+
+	go m.SendJoin()
+}
+
+func (m *MemberEcu) handleAnnounceVin(msg *client.Message) {
+
+	// TODO : ******************
+	log.Printf("Received VIN From AppID - %s\n", msg.Metadata.Get(appKey))
+	fmt.Println("Not sure what needs to done here")
+	// fmt.Printf("Printing the received message: %+v\n", msg)
+
+	// TODO : ******************
+
 }
 
 // SendJoin sends join request to the leader
@@ -156,50 +135,29 @@ func (m *MemberEcu) SendJoin() {
 		panic("join Handler not found")
 	}
 
-	payload, err := m.aggregateCertNone()
+	cert, err := m.aggregateCert()
 	if err != nil {
 		// TODO: Better Error Handling
 		// Add logger
-		fmt.Printf("Error while creating payload: %s", err.Error())
+		log.Printf("Error while creating payload: %s", err.Error())
+	}
+
+	nonce, err := m.generateNonce()
+	if err != nil {
+		log.Printf("Error while creating payload: %s", err.Error())
 	}
 
 	log.Printf("Sent Join from - AppID: %s\n", m.domain.ID)
 
-	if err := sender.Send(m.generateMessage(payload)); err != nil {
+	if err := m.send(sender, cert, "cert"); err != nil {
 		// TODO: Better Error Handling
 		// Add logger
-		fmt.Printf("Error while sending message: %s", err.Error())
-	}
-}
-
-func (m *MemberEcu) handleAnnounceSn(msg *client.Message) {
-	log.Printf("Received AnnounceSn From AppID: - %s\n", msg.Metadata.Get(appKey))
-
-	if m.getnetworkformationflag() {
-		return
+		log.Printf("Error while sending message: %s", err.Error())
 	}
 
-	if bytes.Equal(msg.Payload, []byte(m.domain.GetSn())) {
-		log.Println("Received Sn is equal to Sn stored. Returning")
-		return
+	if err := m.send(sender, nonce, "nonce"); err != nil {
+		log.Printf("Error while sending message: %s", err.Error())
 	}
-
-	// set n/w formation flag true, to ignore any rekey message
-	m.setnetworkformationflag(true)
-
-	go m.SendJoin()
-}
-
-func (m *MemberEcu) handleAnnounceVin(msg *client.Message) {
-
-	// TODO : ******************
-
-	log.Printf("Received VIN From AppID - %s\n", msg.Metadata.Get(appKey))
-
-	fmt.Println("Not sure what needs to done here")
-	// fmt.Printf("Printing the received message: %+v\n", msg)
-
-	// TODO : ******************
 
 }
 
@@ -209,48 +167,11 @@ func (m *MemberEcu) handleSn(msg *client.Message) {
 	if err := m.domain.SetSn(msg.Payload); err != nil {
 		// TODO: Better Error Handling
 		// Add logger
-		fmt.Printf("error setting network key Sn: %s", err.Error())
+		log.Printf("error setting network key Sn: %s", err.Error())
 	}
-	m.setnetworkformationflag(false)
-}
+	/*
 
-func (m *MemberEcu) handleRekey(msg *client.Message) {
-	log.Printf("Received rekey from AppID: %s\n", msg.Metadata.Get(appKey))
+		m.setnetworkformationflag(false)
 
-	// TODO : add mux -- ** important **
-
-	m.first = false
-	m.repeat = true
-
-	if m.rktimer.Running() {
-		m.rktimer.Reset(rekeytimeout * time.Second)
-	}
-}
-
-func (m *MemberEcu) handleReceiveNonce(msg *client.Message) error {
-	log.Printf("Received Nonce :- From - %s\n", msg.Metadata.Get(appKey).(string))
-
-	ctype, err := msg.Metadata.Verify(contentType)
-	if err != nil && ctype != "nonce" {
-		return errInvalidContentType
-	}
-
-	appID, err := msg.Metadata.Verify(appKey)
-	if err != nil {
-		return errAppIDNotFound
-	}
-
-	m.domain.AddToNonceTable(appID, msg.Payload)
-
-	if m.rktimer.Running() {
-		if m.repeat {
-			if err := m.AnnouceNonce(); err != nil {
-				return err
-			}
-			return nil
-		}
-		m.rktimer.Reset(rekeytimeout * time.Second)
-		return nil
-	}
-	return m.AnnounceRekey()
+	*/
 }

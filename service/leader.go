@@ -6,10 +6,10 @@ import (
 	"log"
 	"path/filepath"
 
-	"github.com/sauravgsh16/ecu/client"
-	"github.com/sauravgsh16/ecu/config"
-	"github.com/sauravgsh16/ecu/handler"
-	"github.com/sauravgsh16/ecu/util"
+	"github.deere.com/sg30983/ecu/client"
+	"github.deere.com/sg30983/ecu/config"
+	"github.deere.com/sg30983/ecu/handler"
+	"github.deere.com/sg30983/ecu/util"
 )
 
 func newLeader(c *ecuConfig) (*LeaderEcu, error) {
@@ -72,10 +72,9 @@ func (l *LeaderEcu) StartListeners() {
 					go l.handleReceiveNonce(i.msg)
 
 				case config.Rekey:
-					l.domain.RemoveFromNonceTable(i.msg.Metadata.Get(appKey).(string))
-
 					log.Printf("Received Rekey From appID: - %s\n", i.msg.Metadata.Get(appKey))
 					go l.AnnounceSn()
+					go l.handleRekey(i.msg)
 
 				default:
 					l.unicastCh <- i
@@ -94,7 +93,7 @@ func (l *LeaderEcu) handleUnicast() {
 			case <-l.done:
 				return
 			case i := <-l.unicastCh:
-				name := l.unicastPattern.FindStringSubmatch(i.name)[1]
+				name := l.unicastRe.FindStringSubmatch(i.name)[1]
 				switch name {
 
 				case config.Join:
@@ -146,19 +145,24 @@ func (l *LeaderEcu) AnnounceVin() error {
 		return fmt.Errorf("vim certs not loaded")
 	}
 
-	payload, err := l.aggregateCertNone()
+	log.Printf("Broadcasting VIN from AppID: - %s\n", l.domain.ID)
+
+	cert, err := l.aggregateCert()
 	if err != nil {
 		return err
 	}
 
-	// TODO: standardize message format for all message types
-	msg := l.generateMessage(payload)
-	msg.Metadata.Set(contentType, "vinCert")
-
-	log.Printf("Broadcasting VIN from AppID: - %s\n", msg.Metadata.Get(appKey))
-
-	if err := h.Send(msg); err != nil {
+	nonce, err := l.generateNonce()
+	if err != nil {
 		return err
+	}
+
+	if err := l.send(h, cert, "cert"); err != nil {
+		return fmt.Errorf("Error while sending message: %s", err.Error())
+	}
+
+	if err := l.send(h, nonce, "nonce"); err != nil {
+		return fmt.Errorf("Error while sending message: %s", err.Error())
 	}
 	return nil
 }

@@ -60,6 +60,10 @@ func (s *subscriber) setChannel() error {
 }
 
 func (s *subscriber) Close() error {
+
+	// TODO: Better implementation
+	// ChannelClose should wait for ChannelCloseOk message
+
 	if err := s.ch.Close(); err != nil {
 		return err
 	}

@@ -3,9 +3,9 @@ package handler
 import (
 	"context"
 
-	"github.com/sauravgsh16/ecu/client"
-	"github.com/sauravgsh16/ecu/config"
-	"github.com/sauravgsh16/ecu/util"
+	"github.deere.com/sg30983/ecu/client"
+	"github.deere.com/sg30983/ecu/config"
+	"github.deere.com/sg30983/ecu/util"
 )
 
 // Broadcaster interface

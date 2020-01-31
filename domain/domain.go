@@ -14,8 +14,8 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/keep94/appcommon/kdf"
 
-	"github.com/sauravgsh16/ecu/config"
-	"github.com/sauravgsh16/ecu/util"
+	"github.deere.com/sg30983/ecu/config"
+	"github.deere.com/sg30983/ecu/util"
 )
 
 const (
@@ -62,8 +62,8 @@ type Ecu struct {
 	nonceMux sync.Mutex
 }
 
-// NewEcu returns a new Ecu with sn = 0
-func NewEcu(kind int) (*Ecu, error) {
+// New returns a new Ecu with sn = 0
+func New(kind int) (*Ecu, error) {
 	uuid := fmt.Sprintf("%s", uuid.Must(uuid.NewV4()))
 
 	log.Printf("New ECU registered with ID: %s\n\n", uuid)
@@ -253,27 +253,3 @@ func checkZero(b []byte) bool {
 	}
 	return true
 }
-
-/*
-// Message struct
-type Message struct {
-	ID                   int
-	FreshnessValue       int32
-	EncryptBits          int64
-	BlkCount             int64
-	PlainText            []byte
-	Nonce                []byte
-	InitializationVector []byte
-}
-
-// NewMessage returns a new Message
-func NewMessage() *Message {
-	return &Message{
-		PlainText:            make([]byte, 16),
-		Nonce:                make([]byte, 4),
-		InitializationVector: make([]byte, 8),
-	}
-}
-
-func (m *Message) CreateNonce() {}
-*/

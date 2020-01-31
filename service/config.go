@@ -1,7 +1,7 @@
 package service
 
 import (
-	"github.com/sauravgsh16/ecu/handler"
+	"github.deere.com/sg30983/ecu/handler"
 )
 
 const (
@@ -24,6 +24,7 @@ func leaderConfig() *ecuConfig {
 			handler.NewSnAnnouncer,
 			handler.NewVinAnnouncer,
 			handler.NewNonceAnnouncer,
+			handler.NewRekeyAnnouncer,
 		},
 		subscribers: []func(string) (handler.Receiver, error){
 			handler.NewRekeySubscriber,
