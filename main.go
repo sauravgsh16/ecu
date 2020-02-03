@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"log"
 
-	"github.deere.com/sg30983/ecu/can"
+	"github.com/sauravgsh16/ecu/can"
 )
 
 type Message struct {

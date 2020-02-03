@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.deere.com/sg30983/ecu/config"
+	"github.com/sauravgsh16/ecu/config"
 
 	"github.com/sauravgsh16/message-server/qclient"
 )

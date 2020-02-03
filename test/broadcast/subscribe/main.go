@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.deere.com/sg30983/ecu/client"
+	"github.com/sauravgsh16/ecu/client"
 )
 
 const (

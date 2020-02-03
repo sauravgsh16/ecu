@@ -9,9 +9,9 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/sauravgsh16/ecu/config"
+	"github.com/sauravgsh16/ecu/service"
 	supervisor "github.com/sauravgsh16/supervisor/server"
-	"github.deere.com/sg30983/ecu/config"
-	"github.deere.com/sg30983/ecu/service"
 )
 
 const (

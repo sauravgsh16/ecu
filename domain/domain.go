@@ -14,8 +14,8 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/keep94/appcommon/kdf"
 
-	"github.deere.com/sg30983/ecu/config"
-	"github.deere.com/sg30983/ecu/util"
+	"github.com/sauravgsh16/ecu/config"
+	"github.com/sauravgsh16/ecu/util"
 )
 
 const (

@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.deere.com/sg30983/ecu/client"
+	"github.com/sauravgsh16/ecu/client"
 	// "log"
 )
 
 //"io/ioutil"
 // "os"
 
-// "github.deere.com/sg30983/ecu/util"
+// "github.com/sauravgsh16/ecu/util"
 
 /*
 func main() {

@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.deere.com/sg30983/ecu/handler"
+	"github.com/sauravgsh16/ecu/handler"
 )
 
 func main() {

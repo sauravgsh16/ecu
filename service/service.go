@@ -12,11 +12,11 @@ import (
 
 	"github.com/gofrs/uuid"
 	"github.com/hashicorp/go-multierror"
-	"github.deere.com/sg30983/ecu/client"
-	"github.deere.com/sg30983/ecu/config"
-	"github.deere.com/sg30983/ecu/domain"
-	"github.deere.com/sg30983/ecu/handler"
-	"github.deere.com/sg30983/ecu/util"
+	"github.com/sauravgsh16/ecu/client"
+	"github.com/sauravgsh16/ecu/config"
+	"github.com/sauravgsh16/ecu/domain"
+	"github.com/sauravgsh16/ecu/handler"
+	"github.com/sauravgsh16/ecu/util"
 )
 
 const (

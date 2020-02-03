@@ -14,13 +14,14 @@ const (
 
 // Message struct
 type Message struct {
-	ArbitrationID int
+	ArbitrationID []byte
 	PduFormat     int
 	PduSpecific   int
 	Priority      int64
 	PGN           string
 	Src           int64
 	Dst           int64
+	Size          byte
 	Data          []byte
 	TimeStamp     int64
 }
@@ -30,8 +31,9 @@ type Message struct {
 // New Can message
 func newMsg() *Message {
 	return &Message{
-		TimeStamp: time.Now().UnixNano(),
-		Data:      make([]byte, 8),
+		ArbitrationID: make([]byte, 4),
+		TimeStamp:     time.Now().UnixNano(),
+		Data:          make([]byte, 8),
 	}
 }
 

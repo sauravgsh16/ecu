@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.deere.com/sg30983/ecu/client"
+	"github.com/sauravgsh16/ecu/client"
 )
 
 // Sender interface

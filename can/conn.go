@@ -84,23 +84,20 @@ func open(conn io.ReadWriteCloser) *Connection {
 
 func (c *Connection) HandleIncoming(r io.Reader) {
 	buf := bufio.NewReader(r)
-	f := reader{r: buf}
-	ticker := time.NewTicker(2 * time.Second)
+	f := &reader{
+		r: buf,
+	}
 
 	for {
-		select {
-		case <-ticker.C:
-			return
-		default:
-		}
-
 		b, err := f.readMessage()
 		if err == io.EOF {
 			return
 		}
 		if err != nil {
 			log.Printf(err.Error())
+
+		} else {
+			log.Printf("%#v\n", b)
 		}
-		log.Printf("Here:%#v\n", b)
 	}
 }
