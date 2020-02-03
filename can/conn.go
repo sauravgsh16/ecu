@@ -85,9 +85,9 @@ func open(conn io.ReadWriteCloser) *Connection {
 func (c *Connection) HandleIncoming(r io.Reader) {
 	buf := bufio.NewReader(r)
 	f := reader{r: buf}
+	ticker := time.NewTicker(2 * time.Second)
 
 	for {
-		ticker := time.NewTicker(5 * time.Second)
 		select {
 		case <-ticker.C:
 			return
