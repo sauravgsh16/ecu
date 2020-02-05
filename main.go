@@ -2,6 +2,8 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"log"
 
 	"github.com/sauravgsh16/ecu/can"
@@ -86,4 +88,25 @@ func main() {
 		h, _ := hex.DecodeString(s)
 		fmt.Printf("%#v\n", h)
 	*/
+
+	//b := []byte{0x16, 0x10, 0x53, 0x69, 0x65, 0x49, 0xDE, 0x4C, 0xA0, 0x26, 0x5D, 0x77, 0xEB, 0x62, 0x8A, 0x36, 0xE4, 0x1C, 0x96, 0x60, 0xB0, 0x47, 0x14, 0xCD, 0xF7, 0x24, 0x9F, 0xF, 0xD6, 0xE6, 0xC5, 0x55}
+	b := []byte("A long test string")
+
+	buf := make([]byte, hex.EncodedLen(len(b)))
+	hex.Encode(buf, b)
+	fmt.Printf("%+v\n", b)
+	fmt.Printf("%+v\n", buf)
+	l0 := len(buf)
+	l1 := len(fmt.Sprintf("%#v\n", buf))
+	l2 := len(fmt.Sprintf("%+v\n", buf))
+	fmt.Printf("%d %d %d\n", l0, l1, l2)
+
+	n := make([]byte, len(buf))
+	hex.Decode(n, buf)
+	fmt.Printf("%s\n", n)
+
+	table := "0123456789abcdef"
+	v := 65
+	i := v >> 4
+	fmt.Printf("%+v\n", table[i])
 }

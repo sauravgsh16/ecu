@@ -11,6 +11,14 @@ func main() {
 		log.Fatalf(err.Error())
 	}
 	log.Println("Listening on :19000")
+	_ = []string{
+		"xtd 02 1CECF7E8 08 10 23 05 05 FF 00 CB 00\n",
+		"xtd 02 1CEBF7E8 08 01 61 44 56 43 00 00 14\n",
+		"xtd 02 1CEBF7E8 08 02 41 45 46 5F 53 50 52\n",
+		"xtd 02 1CEBF7E8 08 03 41 59 45 52 28 53 43\n",
+		"xtd 02 1CEBF7E8 08 04 33 41 29 2D 35 53 04\n",
+		"xtd 02 1CEBF7E8 08 05 31 2E 30 31 A2 FF BF\n",
+	}
 
 	for {
 		conn, err := ln.Accept()

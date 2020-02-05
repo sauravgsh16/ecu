@@ -101,6 +101,14 @@ func (d *decoder) Read(p []byte) (n int, err error) {
 
 type reader struct {
 	r io.Reader
+	d *decoder
+}
+
+func newReader(r io.Reader) *reader {
+	return &reader{
+		r: r,
+		d: newDecoder(r),
+	}
 }
 
 func (r reader) readMessage() (*Message, error) {
@@ -111,17 +119,15 @@ func (r reader) readMessage() (*Message, error) {
 		return nil, err
 	}
 
-	d := newDecoder(r.r)
-
-	if _, err := r.readArbitrationID(d, m); err != nil {
+	if _, err := r.readArbitrationID(m); err != nil {
 		return nil, err
 	}
 
-	if _, err := r.readSize(d, m); err != nil {
+	if _, err := r.readSize(m); err != nil {
 		return nil, err
 	}
 
-	if _, err := r.readBody(d, m); err != nil {
+	if _, err := r.readBody(m); err != nil {
 		return nil, err
 	}
 
@@ -133,17 +139,17 @@ func (r reader) readMessage() (*Message, error) {
 	return m, nil
 }
 
-func (r reader) readArbitrationID(d *decoder, m *Message) (int, error) {
-	n, err := d.Read(m.ArbitrationID)
+func (r reader) readArbitrationID(m *Message) (int, error) {
+	n, err := r.d.Read(m.ArbitrationID)
 	if err != nil {
 		return 0, err
 	}
 	return n, nil
 }
 
-func (r reader) readSize(d *decoder, m *Message) (int, error) {
+func (r reader) readSize(m *Message) (int, error) {
 	b := make([]byte, sizebyte)
-	n, err := d.Read(b)
+	n, err := r.d.Read(b)
 	if err != nil {
 		return 0, err
 	}
@@ -151,9 +157,9 @@ func (r reader) readSize(d *decoder, m *Message) (int, error) {
 	return n, err
 }
 
-func (r reader) readBody(d *decoder, m *Message) (int, error) {
+func (r reader) readBody(m *Message) (int, error) {
 	b := make([]byte, 11)
-	n, err := d.Read(b)
+	n, err := r.d.Read(b)
 	if err != nil {
 		return 0, err
 	}

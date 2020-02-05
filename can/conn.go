@@ -84,9 +84,7 @@ func open(conn io.ReadWriteCloser) *Connection {
 
 func (c *Connection) HandleIncoming(r io.Reader) {
 	buf := bufio.NewReader(r)
-	f := &reader{
-		r: buf,
-	}
+	f := newReader(buf)
 
 	for {
 		b, err := f.readMessage()

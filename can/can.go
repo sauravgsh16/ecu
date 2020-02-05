@@ -15,8 +15,6 @@ const (
 // Message struct
 type Message struct {
 	ArbitrationID []byte
-	PduFormat     int
-	PduSpecific   int
 	Priority      int64
 	PGN           string
 	Src           int64
