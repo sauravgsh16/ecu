@@ -2,6 +2,7 @@ package can
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"time"
 )
@@ -18,7 +19,7 @@ var (
 type Message struct {
 	ArbitrationID []byte
 	Priority      byte
-	PGN           []byte
+	PGN           string
 	Src           byte
 	Dst           byte
 	Size          byte
@@ -69,12 +70,10 @@ func (m *Message) parseArbitrationID() error {
 	m.Src = m.ArbitrationID[3]
 	m.Dst = m.ArbitrationID[2]
 
-	m.PGN = make([]byte, 0, 2)
 	if int(m.ArbitrationID[2]) > broadcastThreshold {
-		b := []byte{m.ArbitrationID[2], 0x00}
-		m.PGN = append(m.PGN, b...)
+		m.PGN = hex.EncodeToString([]byte{m.ArbitrationID[2], 0x00})
 	} else {
-		m.PGN = append(m.PGN, m.ArbitrationID[2:4]...)
+		m.PGN = hex.EncodeToString(m.ArbitrationID[2:4])
 	}
 	return nil
 }

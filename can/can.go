@@ -64,11 +64,30 @@ func (c *Can) handleIncoming() {
 	}
 }
 
-// TODO: Call inside go routine
+// TODO: Call as goroutine
 // Extend: to send data to message-server
 func (c *Can) Read() {
-	for m := range c.In {
-		fmt.Printf("%#v\n", m)
+	for {
+		select {
+		case msg := <-c.In:
+			fmt.Printf("%#v\n", msg)
+			/*
+				switch msg.PGN {
+					case ""
+				}
+			*/
+		}
+	}
+}
+
+func (c *Can) processIncoming() {
+	for {
+		select {
+		case msg := <-c.In:
+			switch msg.PGN {
+			case "EB":
+			}
+		}
 	}
 }
 

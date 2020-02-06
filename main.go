@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/hex"
 	"log"
 
 	"github.com/sauravgsh16/ecu/can"
@@ -60,7 +61,7 @@ func main() {
 		c.Out <- &can.Message{
 			ArbitrationID: []uint8{0x1c, 0xeb, 0xf7, 0xe8},
 			Priority:      0x00,
-			PGN:           []uint8{0xf7, 0x0},
+			PGN:           hex.EncodeToString([]uint8{0xf7, 0x0}),
 			Src:           0xe8, Dst: 0xf7,
 			Size: 0x8,
 			Data: []uint8{0x5, 0x31, 0x2e, 0x30, 0x31, 0xa2, 0xff, 0xbf},
