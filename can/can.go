@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 )
 
 var (
@@ -43,11 +44,18 @@ func New() (*Can, error) {
 
 func (c *Can) handleIncoming() {
 	for {
+		if c.conn.closed {
+			break
+		}
 		msg, err := c.r.readMessage()
 		if err == io.EOF {
 			return
 		}
 		if err != nil {
+			if netErr, ok := err.(net.Error); ok {
+				log.Printf("closing connection: %s\n", netErr)
+				break
+			}
 			// TODO: better error handling
 			log.Printf(err.Error())
 			continue
@@ -66,9 +74,12 @@ func (c *Can) Read() {
 
 func (c *Can) handleOutgoing() {
 	for {
+		if c.conn.closed {
+			break
+		}
 		select {
 		case m := <-c.Out:
-			c.write(m)
+			go c.write(m)
 		}
 	}
 }

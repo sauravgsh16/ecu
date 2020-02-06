@@ -60,6 +60,7 @@ func (e *encoder) Write(p []byte) (n int, err error) {
 
 	var s string = common
 	var chunk int = 8
+	var i int
 
 	for len(p) > 0 && e.err == nil {
 		if len(p)%chunk != 0 && len(p) < chunk {
@@ -68,16 +69,16 @@ func (e *encoder) Write(p []byte) (n int, err error) {
 
 		s += fmt.Sprintf("%02d ", chunk)
 
-		for i := 0; i < chunk; i++ {
+		for i = 0; i < chunk-1; i++ {
 			s += string(encode(p[i]))
 			s += " "
 		}
-
+		s += string(encode(p[i]))
 		s += "\n"
 
-		fmt.Printf("writing: %s\n", s)
+		fmt.Printf("writing: %slen:%d\n", s, len(s))
 
-		w, err := e.Write([]byte(s))
+		w, err := e.w.Write([]byte(s))
 		if err != nil {
 			e.err = err
 		}
@@ -85,8 +86,11 @@ func (e *encoder) Write(p []byte) (n int, err error) {
 
 		p = p[chunk:]
 		s = common
+
+		fmt.Printf("bytes written: %d\n", w)
 	}
-	fmt.Printf("bytes written: %d\n", n)
+
+	fmt.Printf("%d\n", len("xtd 02 1cebf7e8 08 05 31 2e 30 31 a2 ff bf\n"))
 
 	return n, e.err
 }

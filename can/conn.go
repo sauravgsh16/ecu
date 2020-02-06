@@ -24,6 +24,7 @@ var (
 type Connection struct {
 	Conn   io.ReadWriteCloser
 	writer writer
+	closed bool
 }
 
 func validateURL(uri string) (*url.URL, error) {
@@ -78,4 +79,12 @@ func open(conn io.ReadWriteCloser) *Connection {
 	}
 
 	return c
+}
+
+func (c *Connection) close() error {
+	if err := c.Conn.Close(); err != nil {
+		return err
+	}
+	c.closed = true
+	return nil
 }

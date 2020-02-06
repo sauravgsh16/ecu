@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"log"
 
-	"github.deere.com/sg30983/ecu/can"
+	"github.com/sauravgsh16/ecu/can"
 )
 
 type Message struct {
@@ -53,17 +53,20 @@ func main() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-
-	c.Out <- &can.Message{
-		ArbitrationID: []uint8{0x1c, 0xeb, 0xf7, 0xe8},
-		Priority:      0x00,
-		PGN:           []uint8{0xf7, 0x0},
-		Src:           0xe8, Dst: 0xf7,
-		Size: 0x8,
-		Data: []uint8{0x5, 0x31, 0x2e, 0x30, 0x31, 0xa2, 0xff, 0xbf},
-	}
-
 	go c.Read()
+
+	i := 0
+	for i < 10 {
+		c.Out <- &can.Message{
+			ArbitrationID: []uint8{0x1c, 0xeb, 0xf7, 0xe8},
+			Priority:      0x00,
+			PGN:           []uint8{0xf7, 0x0},
+			Src:           0xe8, Dst: 0xf7,
+			Size: 0x8,
+			Data: []uint8{0x5, 0x31, 0x2e, 0x30, 0x31, 0xa2, 0xff, 0xbf},
+		}
+		i++
+	}
 
 	<-forever
 	/*

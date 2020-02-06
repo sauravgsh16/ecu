@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"log"
 	"net"
 )
@@ -11,6 +13,7 @@ func main() {
 		log.Fatalf(err.Error())
 	}
 	log.Println("Listening on :19000")
+
 	_ = []string{
 		"xtd 02 1CECF7E8 08 10 23 05 05 FF 00 CB 00\n",
 		"xtd 02 1CEBF7E8 08 01 61 44 56 43 00 00 14\n",
@@ -25,12 +28,27 @@ func main() {
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
+		go read(conn)
+
 		i := 0
-		for i < 1 {
+		for i < 10 {
 			//conn.Write([]byte("Xtd 02 0CCBF782 08 13 00 86 00 B8 0B 00 00\n"))
-			conn.Write([]byte("Xtd 02 0CCBF782")) // 13 00 86 00 B8 0B 00 00\n"))
+			conn.Write([]byte("Xtd 02 0CCBF782 08 13 00 86 00 B8 0B 86 86\n")) // 13 00 86 00 B8 0B 00 00\n"))
 			i++
 		}
 	}
 
+}
+
+func read(c net.Conn) {
+	for {
+		b := make([]byte, 43)
+		if _, err := io.ReadFull(c, b[:43]); err != nil {
+			if err == io.EOF {
+				fmt.Printf("Continuing\n")
+			}
+			log.Printf(err.Error())
+		}
+		fmt.Printf("%s", string(b))
+	}
 }
