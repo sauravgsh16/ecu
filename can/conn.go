@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"io"
-	"log"
 	"net"
 	"net/url"
 	"time"
@@ -78,24 +77,5 @@ func open(conn io.ReadWriteCloser) *Connection {
 		writer: writer{w: bufio.NewWriter(conn)},
 	}
 
-	// go c.handleIncoming(c.conn)
 	return c
-}
-
-func (c *Connection) HandleIncoming(r io.Reader) {
-	buf := bufio.NewReader(r)
-	f := newReader(buf)
-
-	for {
-		b, err := f.readMessage()
-		if err == io.EOF {
-			return
-		}
-		if err != nil {
-			log.Printf(err.Error())
-
-		} else {
-			log.Printf("%#v\n", b)
-		}
-	}
 }
