@@ -6,19 +6,56 @@ import (
 	"io"
 	"log"
 	"net"
+	"sync"
 )
 
 var (
 	vpsAddr = "tcp://localhost:19000"
 )
 
+type tp struct {
+	pgn    string
+	size   int
+	frames int
+	data   []byte
+	mux    sync.Mutex
+}
+
+func newTp(m *Message) *tp {
+	// TODO: @Gourab: needs to get index of bytes which form PGN
+
+	return &tp{
+		size:   int(m.Data[1]),
+		frames: int(m.Data[3]),
+		data:   make([]byte, 0, int(m.Data[1])),
+	}
+}
+
+func (t *tp) currSize() int {
+	return len(t.data)
+}
+
+func (t *tp) append(d []byte) {
+	t.mux.Lock()
+	defer t.mux.Unlock()
+
+	t.data = append(t.data, d...)
+}
+
+func (t *tp) isValid(pgn string) bool {
+	return t.pgn == pgn
+}
+
 // Can struct
 type Can struct {
-	r    *reader
-	w    *writer
-	conn *Connection
-	In   chan *Message
-	Out  chan *Message
+	r      *reader
+	w      *writer
+	conn   *Connection
+	currTP *tp
+	In     chan *Message
+	Out    chan *Message
+	done   chan bool
+	wg     sync.WaitGroup
 }
 
 // New returns a pointer to Can
@@ -35,11 +72,16 @@ func New() (*Can, error) {
 		w:    newWriter(conn.writer.w),
 		In:   make(chan *Message),
 		Out:  make(chan *Message),
+		done: make(chan bool),
 	}
-
-	go c.handleIncoming()
-	go c.handleOutgoing()
 	return c, nil
+}
+
+// Init can goroutines
+func (c *Can) Init() {
+	go c.handleIncoming()
+	go c.processIncoming()
+	go c.handleOutgoing()
 }
 
 func (c *Can) handleIncoming() {
@@ -64,28 +106,82 @@ func (c *Can) handleIncoming() {
 	}
 }
 
-// TODO: Call as goroutine
-// Extend: to send data to message-server
-func (c *Can) Read() {
-	for {
-		select {
-		case msg := <-c.In:
-			fmt.Printf("%#v\n", msg)
-			/*
-				switch msg.PGN {
-					case ""
+func (c *Can) processIncoming() {
+	var fc int
+	handle := make(chan *tp)
+
+	go func() {
+	loop:
+		for {
+			select {
+
+			case msg, ok := <-c.In:
+				if !ok {
+					break loop
 				}
-			*/
+
+				switch {
+				case isPrefix(msg.PGN, "EC"):
+					if c.currTP != nil {
+						c.wg.Wait()
+					}
+
+					c.currTP = newTp(msg)
+					c.wg.Add(1)
+
+				case isPrefix(msg.PGN, "EB"):
+					if c.currTP == nil {
+						log.Fatalf("invalid tp pgn '%s' received, before receving tp initial tp info", msg.PGN)
+					}
+
+					if fc < c.currTP.frames {
+						c.currTP.append(msg.Data[1:])
+						fc++
+					}
+
+					if fc >= c.currTP.frames {
+						fmt.Printf("%#v\n: len: %d\n", c.currTP, len(c.currTP.data))
+						// process currTp before setting to nil
+
+						c.currTP = nil
+						fc = 0
+						c.wg.Done()
+					}
+				}
+			}
 		}
-	}
+		close(handle)
+	}()
+	go c.handleMessage(handle)
 }
 
-func (c *Can) processIncoming() {
+func (c *Can) handleMessage(h chan *tp) {
 	for {
 		select {
-		case msg := <-c.In:
-			switch msg.PGN {
-			case "EB":
+		case tp, ok := <-h:
+			if !ok {
+				break
+			}
+
+			switch tp.pgn {
+
+			// announce Sn
+			case "B000":
+
+			// announce VIN
+			case "B100":
+
+			// send Join
+			case "B200":
+
+			// send Sn
+			case "B300":
+
+			// start rekey
+			case "B400":
+
+			// send nonce
+			case "B500":
 			}
 		}
 	}
@@ -104,5 +200,23 @@ func (c *Can) handleOutgoing() {
 }
 
 func (c *Can) write(m *Message) error {
+	c.w.mu.Lock()
+	defer c.w.mu.Unlock()
+
 	return c.w.writeMessage(m)
+}
+
+func isPrefix(s, substr string) bool {
+	if len(s) < len(substr) {
+		return false
+	}
+
+	i := 0
+	for i < len(substr) {
+		if s[i] != substr[i] {
+			return false
+		}
+		i++
+	}
+	return true
 }

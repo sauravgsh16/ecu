@@ -23,6 +23,8 @@ type encoder struct {
 	w   io.Writer
 	err error
 	out [1024]byte
+	f   chan bool
+	mux sync.Mutex
 }
 
 // xtd 02 1CECF7E8 08 10 23 05 05 FF 00 CB 00\n
@@ -77,36 +79,52 @@ func (e *encoder) Write(p []byte) (n int, err error) {
 
 		fmt.Printf("writing: %slen:%d\n", s, len(s))
 
+		e.mux.Lock()
 		w, err := e.w.Write([]byte(s))
 		if err != nil {
 			e.err = err
 		}
+		e.mux.Unlock()
+
 		n += w / 2
 
 		p = p[chunk:]
 		s = common
 	}
 
+	e.f <- true
+
 	return n, e.err
 }
 
-func newEncoder(w io.Writer) *encoder {
+func newEncoder(w io.Writer, f chan bool) *encoder {
 	return &encoder{
 		w: w,
+		f: f,
 	}
 }
 
 type writer struct {
-	w  io.Writer
-	e  *encoder
-	mu sync.Mutex
+	w     io.Writer
+	e     *encoder
+	wg    sync.WaitGroup
+	f     chan bool
+	errCh chan error
+	done  chan bool
 }
 
 func newWriter(w io.Writer) *writer {
-	return &writer{
-		w: w,
-		e: newEncoder(w),
+	f := make(chan bool)
+	e := newEncoder(w, f)
+
+	wtr := &writer{
+		w:     w,
+		e:     e,
+		f:     f,
+		errCh: make(chan error),
+		done:  make(chan bool),
 	}
+	return wtr
 }
 
 func (w *writer) writeMessage(m *Message) error {
@@ -119,11 +137,27 @@ func (w *writer) writeMessage(m *Message) error {
 		return err
 	}
 
-	if buf, ok := w.w.(*bufio.Writer); ok {
-		if err := buf.Flush(); err != nil {
-			return err
-		}
+	go w.flush()
+
+	select {
+	case err := <-w.errCh:
+		return err
+	default:
 	}
 
 	return nil
+}
+
+func (w *writer) flush() {
+	select {
+	case <-w.f:
+		if buf, ok := w.w.(*bufio.Writer); ok {
+			if err := buf.Flush(); err != nil {
+				w.errCh <- err
+			}
+		}
+		w.errCh <- nil
+	case <-w.done:
+		return
+	}
 }

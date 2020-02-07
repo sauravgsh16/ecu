@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -70,10 +71,13 @@ func (m *Message) parseArbitrationID() error {
 	m.Src = m.ArbitrationID[3]
 	m.Dst = m.ArbitrationID[2]
 
+	var pgn []byte
 	if int(m.ArbitrationID[2]) > broadcastThreshold {
-		m.PGN = hex.EncodeToString([]byte{m.ArbitrationID[2], 0x00})
+		pgn = []byte{m.ArbitrationID[1], 0x00}
 	} else {
-		m.PGN = hex.EncodeToString(m.ArbitrationID[2:4])
+		pgn = m.ArbitrationID[1:3]
 	}
+
+	m.PGN = strings.ToUpper(hex.EncodeToString(pgn))
 	return nil
 }
