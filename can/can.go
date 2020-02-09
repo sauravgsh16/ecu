@@ -54,7 +54,7 @@ type Can struct {
 	currTP *tp
 	In     chan *Message
 	Out    chan *Message
-	done   chan bool
+	Done   chan bool
 	wg     sync.WaitGroup
 }
 
@@ -72,7 +72,7 @@ func New() (*Can, error) {
 		w:    newWriter(conn.writer.w),
 		In:   make(chan *Message),
 		Out:  make(chan *Message),
-		done: make(chan bool),
+		Done: make(chan bool),
 	}
 	return c, nil
 }
@@ -82,11 +82,19 @@ func (c *Can) Init() {
 	go c.handleIncoming()
 	go c.processIncoming()
 	go c.handleOutgoing()
+	go c.handleClose()
+}
+
+func (c *Can) handleClose() {
+	select {
+	case <-c.Done:
+		c.conn.close()
+	}
 }
 
 func (c *Can) handleIncoming() {
 	for {
-		if c.conn.closed {
+		if c.conn.isClosed() {
 			break
 		}
 		msg, err := c.r.readMessage()
@@ -104,6 +112,7 @@ func (c *Can) handleIncoming() {
 		}
 		c.In <- msg
 	}
+	close(c.In)
 }
 
 func (c *Can) processIncoming() {
@@ -111,6 +120,7 @@ func (c *Can) processIncoming() {
 	handle := make(chan *tp)
 
 	go func() {
+		var count int
 	loop:
 		for {
 			select {
@@ -140,8 +150,9 @@ func (c *Can) processIncoming() {
 					}
 
 					if fc >= c.currTP.frames {
-						fmt.Printf("%#v\n: len: %d\n", c.currTP, len(c.currTP.data))
+						//fmt.Printf("%#v\n: len: %d\n", c.currTP, len(c.currTP.data))
 						// process currTp before setting to nil
+						count++
 
 						c.currTP = nil
 						fc = 0
@@ -150,6 +161,7 @@ func (c *Can) processIncoming() {
 				}
 			}
 		}
+		fmt.Printf("received: %d\n", count)
 		close(handle)
 	}()
 	go c.handleMessage(handle)
@@ -189,21 +201,22 @@ func (c *Can) handleMessage(h chan *tp) {
 
 func (c *Can) handleOutgoing() {
 	for {
-		if c.conn.closed {
-			break
-		}
 		select {
 		case m := <-c.Out:
+			if c.conn.isClosed() {
+				break
+			}
 			go c.write(m)
 		}
 	}
 }
 
 func (c *Can) write(m *Message) error {
-	c.w.mu.Lock()
-	defer c.w.mu.Unlock()
-
-	return c.w.writeMessage(m)
+	if err := c.w.writeMessage(m); err != nil {
+		log.Printf(err.Error())
+		return err
+	}
+	return nil
 }
 
 func isPrefix(s, substr string) bool {

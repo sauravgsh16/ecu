@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"sync"
 	"time"
 )
 
@@ -25,6 +26,7 @@ type Connection struct {
 	Conn   io.ReadWriteCloser
 	writer writer
 	closed bool
+	mu     sync.RWMutex
 }
 
 func validateURL(uri string) (*url.URL, error) {
@@ -85,6 +87,17 @@ func (c *Connection) close() error {
 	if err := c.Conn.Close(); err != nil {
 		return err
 	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.closed = true
 	return nil
+}
+
+func (c *Connection) isClosed() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.closed
 }

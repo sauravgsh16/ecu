@@ -23,6 +23,8 @@ type encoder struct {
 	w   io.Writer
 	err error
 	out [1024]byte
+	f   chan bool
+	mu  *sync.RWMutex
 }
 
 // xtd 02 1CECF7E8 08 10 23 05 05 FF 00 CB 00\n
@@ -75,38 +77,57 @@ func (e *encoder) Write(p []byte) (n int, err error) {
 		s += string(encode(p[i]))
 		s += "\n"
 
-		fmt.Printf("writing: %slen:%d\n", s, len(s))
+		// fmt.Printf("writing: %slen:%d\n", s, len(s))
 
+		e.mu.RLock()
 		w, err := e.w.Write([]byte(s))
 		if err != nil {
 			e.err = err
 		}
+		e.mu.RUnlock()
+
 		n += w / 2
 
 		p = p[chunk:]
 		s = common
 	}
 
+	e.f <- true
+
 	return n, e.err
 }
 
-func newEncoder(w io.Writer) *encoder {
+func newEncoder(w io.Writer, f chan bool, mu *sync.RWMutex) *encoder {
 	return &encoder{
-		w: w,
+		w:  w,
+		f:  f,
+		mu: mu,
 	}
 }
 
 type writer struct {
-	w  io.Writer
-	e  *encoder
-	mu sync.Mutex
+	w       io.Writer
+	e       *encoder
+	flushCh chan bool
+	done    chan bool
+	errCh   chan error
+	mu      *sync.RWMutex
 }
 
 func newWriter(w io.Writer) *writer {
-	return &writer{
-		w: w,
-		e: newEncoder(w),
+	var mu sync.RWMutex
+	f := make(chan bool)
+	e := newEncoder(w, f, &mu)
+
+	wtr := &writer{
+		w:       w,
+		e:       e,
+		flushCh: f,
+		errCh:   make(chan error),
+		done:    make(chan bool),
+		mu:      &mu,
 	}
+	return wtr
 }
 
 func (w *writer) writeMessage(m *Message) error {
@@ -115,15 +136,41 @@ func (w *writer) writeMessage(m *Message) error {
 		return err
 	}
 
+	go w.flush()
+
 	if _, err := w.e.Write(b); err != nil {
 		return err
 	}
+	/*
+	   	if buf, ok := w.w.(*bufio.Writer); ok {
+	   		if err := buf.Flush(); err != nil {
+	   			return err
+	   		}
+	   	}
+	   	return nil
+	   }
+	*/
 
-	if buf, ok := w.w.(*bufio.Writer); ok {
-		if err := buf.Flush(); err != nil {
+	select {
+	case err := <-w.errCh:
+		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (w *writer) flush() {
+	select {
+	case <-w.flushCh:
+		if buf, ok := w.w.(*bufio.Writer); ok {
+			w.mu.Lock()
+			if err := buf.Flush(); err != nil {
+				w.errCh <- err
+			}
+			w.mu.Unlock()
+		}
+		w.errCh <- nil
+	}
 }
