@@ -44,6 +44,7 @@ func main() {
 
 	count := <-done
 	fmt.Printf("%d\n", count)
+	time.Sleep(1 * time.Second)
 	c.Done <- true
 
 	<-forever

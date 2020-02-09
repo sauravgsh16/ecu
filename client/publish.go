@@ -56,8 +56,7 @@ func (p *publisher) setChannel() error {
 
 func (p *publisher) Close() error {
 
-	// TODO: Better implementation
-	// ChannelClose should wait for ChannelCloseOk message
+	// TODO: Better implementation: ChannelClose should wait for ChannelCloseOk message
 
 	if err := p.ch.Close(); err != nil {
 		return err

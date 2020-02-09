@@ -41,16 +41,19 @@ type ECU interface {
 }
 
 type rekeytimer struct {
-	*time.Timer
-	end time.Time
+	timer *time.Timer
+	end   time.Time
 }
 
 func newRekeyTimer(t time.Duration) *rekeytimer {
-	return &rekeytimer{time.NewTimer(t), time.Now().Add(t)}
+	return &rekeytimer{
+		timer: time.NewTimer(t),
+		end:   time.Now().Add(t),
+	}
 }
 
 func (r *rekeytimer) Reset(t time.Duration) {
-	r.Reset(t)
+	r.timer.Reset(t)
 	r.end = time.Now().Add(t)
 }
 
@@ -81,26 +84,13 @@ type ecuService struct {
 	unicastCh      chan *incoming
 	done           chan interface{}
 	rktimer        *rekeytimer
-	flagMux        sync.Mutex
+	flagMux        sync.RWMutex
 	mux            sync.RWMutex
 	unicastRe      *regexp.Regexp
 	wg             sync.WaitGroup
 	formingNetwork bool
 	first          bool
 	repeat         bool
-}
-
-// LeaderEcu struct
-type LeaderEcu struct {
-	ecuService
-	certs      map[string][]byte
-	certMux    sync.Mutex
-	certLoaded bool
-}
-
-// MemberEcu struct
-type MemberEcu struct {
-	ecuService
 }
 
 func init() {
@@ -347,7 +337,14 @@ func (e *ecuService) GetDomainID() string {
 }
 
 func (e *ecuService) handleRekey(msg *client.Message) {
-	log.Printf("Received rekey from AppID: %s\n", msg.Metadata.Get(appKey))
+	if msg.Metadata.Get(appKey) == e.domain.ID {
+		return
+	}
+
+	log.Printf("Received rekey from AppID:\n")
+	fmt.Printf("%#v\n", msg.Metadata.Get("ApplicationID"))
+	fmt.Printf("%#v\n", msg.Metadata.Get("Exchange"))
+	fmt.Printf("%#v\n\n\n\n", msg.Payload)
 
 	e.flagMux.Lock()
 	defer e.flagMux.Unlock()
@@ -355,13 +352,21 @@ func (e *ecuService) handleRekey(msg *client.Message) {
 	e.first = false
 	e.repeat = true
 
-	if e.rktimer.Running() {
+	if e.rktimer != nil && e.rktimer.Running() {
 		e.rktimer.Reset(rekeytimeout * time.Second)
+		return
 	}
+	e.startTimerToGatherNonce()
 }
 
 func (e *ecuService) handleReceiveNonce(msg *client.Message) error {
-	log.Printf("Received Nonce :- From - %s\n", msg.Metadata.Get(appKey).(string))
+	if msg.Metadata.Get(appKey) == e.domain.ID {
+		return nil
+	}
+	log.Printf("Received Nonce From:\n")
+	fmt.Printf("%#v\n", msg.Metadata.Get("ApplicationID"))
+	fmt.Printf("%#v\n", msg.Metadata.Get("Exchange"))
+	fmt.Printf("%#v\n\n\n\n", msg.Payload)
 
 	ctype, err := msg.Metadata.Verify(contentType)
 	if err != nil && ctype != "nonce" {
@@ -375,7 +380,7 @@ func (e *ecuService) handleReceiveNonce(msg *client.Message) error {
 
 	e.domain.AddToNonceTable(appID, msg.Payload)
 
-	if e.rktimer.Running() {
+	if e.rktimer != nil && e.rktimer.Running() {
 		if e.repeat {
 			if err := e.annouceNonce(); err != nil {
 				return err
@@ -453,7 +458,7 @@ func (e *ecuService) annouceNonce() error {
 
 	e.repeat = false
 
-	if e.rktimer.Running() {
+	if e.rktimer != nil && e.rktimer.Running() {
 		// Case when - if we reach this code block
 		// from 'repeat nonce', we know that we have
 		// rekey timeout goroutine running, we just need
@@ -467,8 +472,8 @@ func (e *ecuService) annouceNonce() error {
 }
 
 func (e *ecuService) startTimerToGatherNonce() {
-	if e.rktimer != nil {
-		e.rktimer.Stop()
+	if e.rktimer != nil && e.rktimer.Running() {
+		e.rktimer.timer.Stop()
 	}
 	e.rktimer = newRekeyTimer(rekeytimeout * time.Second)
 	e.listenTimer()
@@ -476,11 +481,21 @@ func (e *ecuService) startTimerToGatherNonce() {
 
 func (e *ecuService) listenTimer() {
 	go func() {
-		select {
-		case <-e.rktimer.C:
-			go e.handleSvCreation()
-			return
+		ticker := time.NewTicker(1 * time.Second)
+		counter := 0
+	loop:
+		for {
+			select {
+			case <-e.rktimer.timer.C:
+				fmt.Printf("TIMER EXITED\n\n")
+				go e.handleSvCreation()
+				break loop
+			case <-ticker.C:
+				counter++
+				fmt.Printf("ticking: %d\n", counter)
+			}
 		}
+		ticker.Stop()
 	}()
 }
 
@@ -490,6 +505,9 @@ func (e *ecuService) handleSvCreation() {
 
 	e.first = true
 	e.repeat = false
+
+	nonceAll := e.domain.GetNonceAll()
+	fmt.Printf("NONCE ALL: %#v\n", nonceAll)
 
 	e.domain.CalculateSv()
 	e.domain.ClearNonceTable()

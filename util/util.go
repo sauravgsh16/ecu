@@ -3,9 +3,7 @@ package util
 import (
 	"crypto/sha512"
 	"fmt"
-	"math/rand"
 	"sync/atomic"
-	"time"
 )
 
 var (
@@ -13,8 +11,7 @@ var (
 )
 
 func init() {
-	rand.Seed(time.Now().UnixNano())
-	counter = time.Now().UnixNano()
+	counter = 40
 }
 
 // GenerateHash returns a sha512/256 hashes string

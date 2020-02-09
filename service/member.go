@@ -11,10 +11,19 @@ import (
 	"github.com/sauravgsh16/ecu/util"
 )
 
+// MemberEcu struct
+type MemberEcu struct {
+	ecuService
+	joinCh chan bool
+}
+
 func newMember(c *ecuConfig) (*MemberEcu, error) {
 	m := new(MemberEcu)
 	m.initializeFields()
 	m.init(c)
+
+	m.joinCh = make(chan bool)
+
 	return m, nil
 }
 
@@ -36,6 +45,9 @@ func (m *MemberEcu) createHandlers() {
 	}
 	if err := m.createSender(m.domain.ID, config.Join, handler.NewJoinSender); err != nil {
 		log.Fatalf(err.Error())
+	}
+	select {
+	case m.joinCh <- true:
 	}
 }
 
@@ -127,13 +139,17 @@ func (m *MemberEcu) handleAnnounceVin(msg *client.Message) {
 
 // SendJoin sends join request to the leader
 func (m *MemberEcu) SendJoin() {
-	m.mux.RLock()
-	defer m.mux.RUnlock()
+	select {
+	case <-m.joinCh:
+	}
 
 	sender, ok := m.senders[util.JoinString(config.Join, m.domain.ID)]
 	if !ok {
 		panic("join Handler not found")
 	}
+
+	m.mux.RLock()
+	defer m.mux.RUnlock()
 
 	cert, err := m.aggregateCert()
 	if err != nil {

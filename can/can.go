@@ -200,15 +200,17 @@ func (c *Can) handleMessage(h chan *tp) {
 }
 
 func (c *Can) handleOutgoing() {
+loop:
 	for {
 		select {
 		case m := <-c.Out:
 			if c.conn.isClosed() {
-				break
+				break loop
 			}
 			go c.write(m)
 		}
 	}
+	close(c.Out)
 }
 
 func (c *Can) write(m *Message) error {

@@ -27,6 +27,8 @@ func leaderConfig() *ecuConfig {
 			handler.NewRekeyAnnouncer,
 		},
 		subscribers: []func(string) (handler.Receiver, error){
+			handler.NewSnSubscriber,
+			handler.NewVinSubscriber,
 			handler.NewRekeySubscriber,
 			handler.NewNonceSubscriber,
 		},

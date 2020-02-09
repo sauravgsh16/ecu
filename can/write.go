@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"sync"
+
+	"github.com/hashicorp/go-multierror"
 )
 
 const (
@@ -131,6 +133,8 @@ func newWriter(w io.Writer) *writer {
 }
 
 func (w *writer) writeMessage(m *Message) error {
+	var err error
+
 	b, err := m.group()
 	if err != nil {
 		return err
@@ -138,27 +142,18 @@ func (w *writer) writeMessage(m *Message) error {
 
 	go w.flush()
 
-	if _, err := w.e.Write(b); err != nil {
-		return err
+	if _, wErr := w.e.Write(b); wErr != nil {
+		err = multierror.Append(err, wErr)
 	}
-	/*
-	   	if buf, ok := w.w.(*bufio.Writer); ok {
-	   		if err := buf.Flush(); err != nil {
-	   			return err
-	   		}
-	   	}
-	   	return nil
-	   }
-	*/
 
 	select {
-	case err := <-w.errCh:
-		if err != nil {
-			return err
+	case fErr := <-w.errCh:
+		if fErr != nil {
+			err = multierror.Append(err, fErr)
 		}
 	}
 
-	return nil
+	return err
 }
 
 func (w *writer) flush() {

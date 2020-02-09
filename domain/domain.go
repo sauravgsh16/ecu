@@ -26,7 +26,7 @@ const (
 )
 
 const (
-	snsize        = 16
+	snsize        = 32
 	noncesize     = 16
 	encKey        = 64
 	mackey        = 64
@@ -65,8 +65,6 @@ type Ecu struct {
 // New returns a new Ecu with sn = 0
 func New(kind int) (*Ecu, error) {
 	uuid := fmt.Sprintf("%s", uuid.Must(uuid.NewV4()))
-
-	log.Printf("New ECU registered with ID: %s\n\n", uuid)
 
 	e := &Ecu{
 		ID:       uuid,
@@ -229,6 +227,11 @@ func (e *Ecu) CalculateSv() {
 	nonceAll := []byte(util.GenerateHash(all))
 	e.svenc = kdf.KDF(e.sn, nonceAll, secocRekeyEnc)
 	e.svmac = kdf.KDF(e.sn, nonceAll, secocRekeyMac)
+}
+
+// GetNonceAll returns Sv of the ECU
+func (e *Ecu) GetNonceAll() map[string][]byte {
+	return e.nonceAll
 }
 
 func (e *Ecu) loadCerts() error {

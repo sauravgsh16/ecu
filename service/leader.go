@@ -5,12 +5,21 @@ import (
 	"io/ioutil"
 	"log"
 	"path/filepath"
+	"sync"
 
 	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
 	"github.com/sauravgsh16/ecu/handler"
 	"github.com/sauravgsh16/ecu/util"
 )
+
+// LeaderEcu struct
+type LeaderEcu struct {
+	ecuService
+	certs      map[string][]byte
+	certMux    sync.Mutex
+	certLoaded bool
+}
 
 func newLeader(c *ecuConfig) (*LeaderEcu, error) {
 	l := new(LeaderEcu)
@@ -68,11 +77,19 @@ func (l *LeaderEcu) StartListeners() {
 			for i := range l.incoming {
 				switch i.name {
 
+				case config.Vin:
+					fmt.Println("Received VIN. Irrelevant Context.")
+
+				case config.Sn:
+					fmt.Println("Received Sn. Irrelevant Context.")
+
 				case config.Nonce:
 					go l.handleReceiveNonce(i.msg)
 
 				case config.Rekey:
-					log.Printf("Received Rekey From appID: - %s\n", i.msg.Metadata.Get(appKey))
+					if i.msg.Metadata.Get(appKey) == l.domain.ID {
+						continue
+					}
 					go l.AnnounceSn()
 					go l.handleRekey(i.msg)
 
