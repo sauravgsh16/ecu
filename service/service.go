@@ -12,6 +12,8 @@ import (
 
 	"github.com/gofrs/uuid"
 	"github.com/hashicorp/go-multierror"
+
+	"github.com/sauravgsh16/ecu/can"
 	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
 	"github.com/sauravgsh16/ecu/domain"
@@ -74,27 +76,61 @@ type incoming struct {
 	msg  *client.Message
 }
 
+type service interface {
+	getID() string
+}
+
+type swService struct {
+	domain  *domain.Ecu
+	rktimer *rekeytimer
+	first   bool
+	repeat  bool
+}
+
+func (sw *swService) getID() string {
+	return sw.domain.ID
+}
+
 type ecuService struct {
-	domain         *domain.Ecu
-	broadcasters   map[string]handler.Sender
-	senders        map[string]handler.Sender
-	subscribers    map[string]*listenerch
-	receivers      map[string]*listenerch
-	incoming       chan *incoming
-	unicastCh      chan *incoming
-	done           chan interface{}
-	rktimer        *rekeytimer
-	flagMux        sync.RWMutex
-	mux            sync.RWMutex
-	unicastRe      *regexp.Regexp
-	wg             sync.WaitGroup
-	formingNetwork bool
-	first          bool
-	repeat         bool
+	s            service
+	broadcasters map[string]handler.Sender
+	senders      map[string]handler.Sender
+	subscribers  map[string]*listenerch
+	receivers    map[string]*listenerch
+	incoming     chan *incoming
+	unicastCh    chan *incoming
+	done         chan interface{}
+	flagMux      sync.RWMutex
+	mux          sync.RWMutex
+	unicastRe    *regexp.Regexp
+	wg           sync.WaitGroup
 }
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
+}
+
+func initEcu(s service, c *ecuConfig) error {
+	var err error
+
+	switch t := s.(type) {
+	case *swService:
+		if t.domain, err = domain.New(c.ecuType); err != nil {
+			return err
+		}
+		t.first = true
+
+	case *hwService:
+		t.ID = fmt.Sprintf("%s", uuid.Must(uuid.NewV4()))
+		if t.can, err = can.New(); err != nil {
+			return err
+		}
+
+	default:
+		return errors.New("unknow type - service")
+	}
+
+	return nil
 }
 
 func (e *ecuService) initializeFields() {
@@ -106,7 +142,6 @@ func (e *ecuService) initializeFields() {
 	e.unicastCh = make(chan *incoming)
 	e.done = make(chan interface{})
 	e.unicastRe = regexp.MustCompile(`^(?P<type>.*?)\.`)
-	e.first = true
 }
 
 func (e *ecuService) closeReceivers(wg *sync.WaitGroup) {
@@ -170,11 +205,6 @@ func (e *ecuService) Close() {
 func (e *ecuService) init(c *ecuConfig) error {
 	var err error
 
-	e.domain, err = domain.New(c.ecuType)
-	if err != nil {
-		return err
-	}
-
 	// Register broadcasters
 	for _, h := range c.broadcasters {
 		b, err := h()
@@ -186,7 +216,7 @@ func (e *ecuService) init(c *ecuConfig) error {
 
 	// Register subscribers
 	for _, h := range c.subscribers {
-		s, err := h(e.domain.ID)
+		s, err := h(e.s.getID()) // CHANGED HERE FROM e.domain.ID
 		if err != nil {
 			return err
 		}
@@ -197,7 +227,7 @@ func (e *ecuService) init(c *ecuConfig) error {
 		}
 	}
 
-	if err := e.startconsumers(); err != nil {
+	if err = e.startconsumers(); err != nil {
 		return err
 	}
 
@@ -258,7 +288,7 @@ func (e *ecuService) generateMessage(payload []byte) *client.Message {
 		UUID:    uuid,
 		Payload: client.Payload(payload),
 		Metadata: client.Metadata(map[string]interface{}{
-			"ApplicationID": e.domain.ID,
+			"ApplicationID": e.s.(*swService).domain.ID,
 		}),
 	}
 }
@@ -277,7 +307,7 @@ func (e *ecuService) aggregateCert() ([]byte, error) {
 	var err error
 	var buf bytes.Buffer
 
-	for _, c := range e.domain.Certs {
+	for _, c := range e.s.(*swService).domain.Certs {
 		if _, wErr := buf.Write(c); wErr != nil {
 			err = multierror.Append(err, wErr)
 		}
@@ -333,11 +363,11 @@ func (e *ecuService) createReceiver(id string, h func(string) (handler.Receiver,
 }
 
 func (e *ecuService) GetDomainID() string {
-	return e.domain.ID
+	return e.s.(*swService).domain.ID
 }
 
 func (e *ecuService) handleRekey(msg *client.Message) {
-	if msg.Metadata.Get(appKey) == e.domain.ID {
+	if msg.Metadata.Get(appKey) == e.s.(*swService).domain.ID {
 		return
 	}
 
@@ -349,18 +379,19 @@ func (e *ecuService) handleRekey(msg *client.Message) {
 	e.flagMux.Lock()
 	defer e.flagMux.Unlock()
 
-	e.first = false
-	e.repeat = true
+	e.s.(*swService).first = false
+	e.s.(*swService).repeat = true
 
-	if e.rktimer != nil && e.rktimer.Running() {
-		e.rktimer.Reset(rekeytimeout * time.Second)
+	if e.s.(*swService).rktimer != nil && e.s.(*swService).rktimer.Running() {
+		e.s.(*swService).rktimer.Reset(rekeytimeout * time.Second)
 		return
 	}
 	e.startTimerToGatherNonce()
 }
 
 func (e *ecuService) handleReceiveNonce(msg *client.Message) error {
-	if msg.Metadata.Get(appKey) == e.domain.ID {
+	t := e.s.(*swService)
+	if msg.Metadata.Get(appKey) == t.domain.ID {
 		return nil
 	}
 	log.Printf("Received Nonce From:\n")
@@ -378,16 +409,16 @@ func (e *ecuService) handleReceiveNonce(msg *client.Message) error {
 		return errAppIDNotFound
 	}
 
-	e.domain.AddToNonceTable(appID, msg.Payload)
+	t.domain.AddToNonceTable(appID, msg.Payload)
 
-	if e.rktimer != nil && e.rktimer.Running() {
-		if e.repeat {
+	if t.rktimer != nil && t.rktimer.Running() {
+		if t.repeat {
 			if err := e.annouceNonce(); err != nil {
 				return err
 			}
 			return nil
 		}
-		e.rktimer.Reset(rekeytimeout * time.Second)
+		t.rktimer.Reset(rekeytimeout * time.Second)
 		return nil
 	}
 	return e.AnnounceRekey()
@@ -395,15 +426,8 @@ func (e *ecuService) handleReceiveNonce(msg *client.Message) error {
 
 // AnnounceRekey announces rekey to the networks
 func (e *ecuService) AnnounceRekey() error {
-	if e.first {
-		/*
-
-			if e.getnetworkformationflag() {
-				// Signifies that it has already taken part in n/w formation
-				return nil
-			}
-		*/
-
+	t := e.s.(*swService)
+	if t.first {
 		h, ok := e.broadcasters[config.Rekey]
 		if !ok {
 			return fmt.Errorf("announce rekey handler not found")
@@ -413,7 +437,7 @@ func (e *ecuService) AnnounceRekey() error {
 		rkmsg := e.generateMessage(empty)
 		rkmsg.Metadata.Set(contentType, "rekey")
 
-		log.Printf("Sending Rekey From AppID - %s\n", e.domain.ID)
+		log.Printf("Sending Rekey From AppID - %s\n", t.domain.ID)
 
 		if err := h.Send(rkmsg); err != nil {
 			return err
@@ -424,22 +448,23 @@ func (e *ecuService) AnnounceRekey() error {
 }
 
 func (e *ecuService) annouceNonce() error {
-	if !e.first && !e.rktimer.Running() {
+	t := e.s.(*swService)
+	if !t.first && !t.rktimer.Running() {
 		// This logic is added here to handle case :-
 		// when we receive "my_nonce" for other ecu, and the rekey timer
 		// for this ecu has stopped. We thus need to generate a new nonce
 		// and use this newly created nonce for sending.
-		if err := e.domain.ResetNonce(); err != nil {
+		if err := t.domain.ResetNonce(); err != nil {
 			log.Printf("error resetting my_nonce: %s", err.Error())
 		}
 	}
 
-	nonce := e.domain.GetNonce()
+	nonce := t.domain.GetNonce()
 	msg := e.generateMessage(nonce)
 
 	// Set headers
 	msg.Metadata.Set(contentType, "nonce")
-	msg.Metadata.Set(appKey, e.domain.ID)
+	msg.Metadata.Set(appKey, t.domain.ID)
 
 	h, ok := e.broadcasters[config.Nonce]
 	if !ok {
@@ -447,7 +472,7 @@ func (e *ecuService) annouceNonce() error {
 	}
 
 	// TODO: proper logging
-	log.Printf("Broadcasting nonce from AppID - %s\n", e.domain.ID)
+	log.Printf("Broadcasting nonce from AppID - %s\n", t.domain.ID)
 
 	if err := h.Send(msg); err != nil {
 		return err
@@ -456,14 +481,14 @@ func (e *ecuService) annouceNonce() error {
 	e.flagMux.Lock()
 	defer e.flagMux.Unlock()
 
-	e.repeat = false
+	t.repeat = false
 
-	if e.rktimer != nil && e.rktimer.Running() {
+	if t.rktimer != nil && t.rktimer.Running() {
 		// Case when - if we reach this code block
 		// from 'repeat nonce', we know that we have
 		// rekey timeout goroutine running, we just need
 		// to reset the time
-		e.rktimer.Reset(rekeytimeout * time.Second)
+		t.rktimer.Reset(rekeytimeout * time.Second)
 		return nil
 	}
 
@@ -472,21 +497,23 @@ func (e *ecuService) annouceNonce() error {
 }
 
 func (e *ecuService) startTimerToGatherNonce() {
-	if e.rktimer != nil && e.rktimer.Running() {
-		e.rktimer.timer.Stop()
+	t := e.s.(*swService)
+	if t.rktimer != nil && t.rktimer.Running() {
+		t.rktimer.timer.Stop()
 	}
-	e.rktimer = newRekeyTimer(rekeytimeout * time.Second)
+	t.rktimer = newRekeyTimer(rekeytimeout * time.Second)
 	e.listenTimer()
 }
 
 func (e *ecuService) listenTimer() {
+	t := e.s.(*swService)
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
 		counter := 0
 	loop:
 		for {
 			select {
-			case <-e.rktimer.timer.C:
+			case <-t.rktimer.timer.C:
 				fmt.Printf("TIMER EXITED\n\n")
 				go e.handleSvCreation()
 				break loop
@@ -503,14 +530,14 @@ func (e *ecuService) handleSvCreation() {
 	e.flagMux.Lock()
 	defer e.flagMux.Unlock()
 
-	e.first = true
-	e.repeat = false
+	e.s.(*swService).first = true
+	e.s.(*swService).repeat = false
 
-	nonceAll := e.domain.GetNonceAll()
+	nonceAll := e.s.(*swService).domain.GetNonceAll()
 	fmt.Printf("NONCE ALL: %#v\n", nonceAll)
 
-	e.domain.CalculateSv()
-	e.domain.ClearNonceTable()
+	e.s.(*swService).domain.CalculateSv()
+	e.s.(*swService).domain.ClearNonceTable()
 }
 
 func (e *ecuService) send(s handler.Sender, b []byte, content string) error {
@@ -542,5 +569,9 @@ func StartListeners(e ECU) {
 		t.StartListeners()
 	case *MemberEcu:
 		t.StartListeners()
+	case *LeaderEcuHW:
+		// TODO
+	case *MemberEcuHW:
+		// TODO
 	}
 }

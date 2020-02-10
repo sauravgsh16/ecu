@@ -24,16 +24,22 @@ type LeaderEcu struct {
 func newLeader(c *ecuConfig) (*LeaderEcu, error) {
 	l := new(LeaderEcu)
 	l.initializeFields()
+	l.s = &swService{}
+	initEcu(l.s, c)
 	l.certs = make(map[string][]byte)
-	l.init(c)
+
+	if err := l.init(c); err != nil {
+		return nil, err
+	}
 
 	if err := l.loadCerts(); err != nil {
 		return nil, err
 	}
 
-	if err := l.domain.GenerateSn(); err != nil {
+	if err := l.s.(*swService).domain.GenerateSn(); err != nil {
 		return nil, err
 	}
+
 	return l, nil
 }
 
@@ -87,7 +93,7 @@ func (l *LeaderEcu) StartListeners() {
 					go l.handleReceiveNonce(i.msg)
 
 				case config.Rekey:
-					if i.msg.Metadata.Get(appKey) == l.domain.ID {
+					if i.msg.Metadata.Get(appKey) == l.s.(*swService).domain.ID {
 						continue
 					}
 					go l.AnnounceSn()
@@ -139,9 +145,9 @@ func (l *LeaderEcu) AnnounceSn() error {
 		return fmt.Errorf("announce Sn handler not found")
 	}
 
-	log.Printf("Broadcasting Sn from AppID: - %s\n", l.domain.ID)
+	log.Printf("Broadcasting Sn from AppID: - %s\n", l.s.(*swService).domain.ID)
 
-	hashSn := util.GenerateHash([]byte(l.domain.GetSn()))
+	hashSn := util.GenerateHash([]byte(l.s.(*swService).domain.GetSn()))
 	if err := h.Send(l.generateMessage([]byte(hashSn))); err != nil {
 		return err
 	}
@@ -162,7 +168,7 @@ func (l *LeaderEcu) AnnounceVin() error {
 		return fmt.Errorf("vim certs not loaded")
 	}
 
-	log.Printf("Broadcasting VIN from AppID: - %s\n", l.domain.ID)
+	log.Printf("Broadcasting VIN from AppID: - %s\n", l.s.(*swService).domain.ID)
 
 	cert, err := l.aggregateCert()
 	if err != nil {
@@ -196,7 +202,7 @@ func (l *LeaderEcu) loadCerts() error {
 	l.certs = make(map[string][]byte)
 
 	for _, c := range config.DefaultBroadCastCertificates {
-		b, err := ioutil.ReadFile(filepath.Join(l.domain.CertLoc, c))
+		b, err := ioutil.ReadFile(filepath.Join(l.s.(*swService).domain.CertLoc, c))
 		if err != nil {
 			return fmt.Errorf("failed to load certificate: %s", err.Error())
 		}
@@ -237,7 +243,7 @@ func (l *LeaderEcu) SendSn(id string) {
 	// Sending Hash of Sn for now
 	// Sn sent here is (CT || mac(Snl-ecu-mac, CT)) - 32 bytes
 
-	hashSn := util.GenerateHash([]byte(l.domain.GetSn()))
+	hashSn := util.GenerateHash([]byte(l.s.(*swService).domain.GetSn()))
 	if err := sender.Send(l.generateMessage([]byte(hashSn))); err != nil {
 		// TODO: Better Error Handling
 		// Add logger

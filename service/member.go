@@ -20,7 +20,12 @@ type MemberEcu struct {
 func newMember(c *ecuConfig) (*MemberEcu, error) {
 	m := new(MemberEcu)
 	m.initializeFields()
-	m.init(c)
+	m.s = &swService{}
+	initEcu(m.s, c)
+
+	if err := m.init(c); err != nil {
+		return nil, err
+	}
 
 	m.joinCh = make(chan bool)
 
@@ -40,10 +45,10 @@ func (m *MemberEcu) CreateUnicastHandlers(idCh chan string, errCh chan error) {
 }
 
 func (m *MemberEcu) createHandlers() {
-	if err := m.createReceiver(m.domain.ID, handler.NewSendSnReceiver); err != nil {
+	if err := m.createReceiver(m.s.(*swService).domain.ID, handler.NewSendSnReceiver); err != nil {
 		log.Fatalf(err.Error())
 	}
-	if err := m.createSender(m.domain.ID, config.Join, handler.NewJoinSender); err != nil {
+	if err := m.createSender(m.s.(*swService).domain.ID, config.Join, handler.NewJoinSender); err != nil {
 		log.Fatalf(err.Error())
 	}
 	select {
@@ -113,7 +118,7 @@ func (m *MemberEcu) handleAnnounceSn(msg *client.Message) {
 		}
 	*/
 
-	if bytes.Equal(msg.Payload, []byte(m.domain.GetSn())) {
+	if bytes.Equal(msg.Payload, []byte(m.s.(*swService).domain.GetSn())) {
 		log.Println("Received Sn is equal to Sn stored. Returning")
 		return
 	}
@@ -127,14 +132,11 @@ func (m *MemberEcu) handleAnnounceSn(msg *client.Message) {
 }
 
 func (m *MemberEcu) handleAnnounceVin(msg *client.Message) {
-
 	// TODO : ******************
 	log.Printf("Received VIN From AppID - %s\n", msg.Metadata.Get(appKey))
 	fmt.Println("Not sure what needs to done here")
 	// fmt.Printf("Printing the received message: %+v\n", msg)
-
 	// TODO : ******************
-
 }
 
 // SendJoin sends join request to the leader
@@ -143,7 +145,7 @@ func (m *MemberEcu) SendJoin() {
 	case <-m.joinCh:
 	}
 
-	sender, ok := m.senders[util.JoinString(config.Join, m.domain.ID)]
+	sender, ok := m.senders[util.JoinString(config.Join, m.s.(*swService).domain.ID)]
 	if !ok {
 		panic("join Handler not found")
 	}
@@ -163,7 +165,7 @@ func (m *MemberEcu) SendJoin() {
 		log.Printf("Error while creating payload: %s", err.Error())
 	}
 
-	log.Printf("Sent Join from - AppID: %s\n", m.domain.ID)
+	log.Printf("Sent Join from - AppID: %s\n", m.s.(*swService).domain.ID)
 
 	if err := m.send(sender, cert, "cert"); err != nil {
 		// TODO: Better Error Handling
@@ -180,7 +182,7 @@ func (m *MemberEcu) SendJoin() {
 func (m *MemberEcu) handleSn(msg *client.Message) {
 	log.Printf("Received Sn From AppID: - %s\n", msg.Metadata.Get(appKey))
 
-	if err := m.domain.SetSn(msg.Payload); err != nil {
+	if err := m.s.(*swService).domain.SetSn(msg.Payload); err != nil {
 		// TODO: Better Error Handling
 		// Add logger
 		log.Printf("error setting network key Sn: %s", err.Error())
