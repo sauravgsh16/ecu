@@ -10,8 +10,7 @@ import (
 )
 
 const (
-	hexchars   = "0123456789abcdef"
-	bufferSize = 1024
+	hexchars = "0123456789abcdef"
 )
 
 func encode(src byte) []byte {
@@ -24,7 +23,6 @@ func encode(src byte) []byte {
 type encoder struct {
 	w   io.Writer
 	err error
-	out [1024]byte
 	f   chan bool
 	mu  *sync.RWMutex
 }
@@ -61,42 +59,62 @@ func (e *encoder) Write(p []byte) (n int, err error) {
 
 	}
 
-	var s string = common
 	var chunk int = 8
-	var i int
+	var s string = common
 
-	for len(p) > 0 && e.err == nil {
-		if len(p)%chunk != 0 && len(p) < chunk {
-			chunk = len(p) % chunk
-		}
-
+	switch {
+	case len(p) <= chunk:
 		s += fmt.Sprintf("%02d ", chunk)
-
-		for i = 0; i < chunk-1; i++ {
-			s += string(encode(p[i]))
-			s += " "
-		}
-		s += string(encode(p[i]))
-		s += "\n"
-
-		// fmt.Printf("writing: %slen:%d\n", s, len(s))
-
-		e.mu.RLock()
-		w, err := e.w.Write([]byte(s))
+		w, err := e.encodeAndWrite(p, chunk, s)
 		if err != nil {
 			e.err = err
 		}
-		e.mu.RUnlock()
-
 		n += w / 2
 
-		p = p[chunk:]
-		s = common
+	case len(p) > chunk:
+		var counter uint8 = 1
+		chunk = chunk - 1
+
+		for len(p) > 0 && e.err == nil {
+			if len(p)%chunk != 0 && len(p) < chunk {
+				chunk = len(p) % chunk
+			}
+
+			s += fmt.Sprintf("%02d %02d ", chunk+1, counter)
+
+			w, err := e.encodeAndWrite(p, chunk, s)
+			if err != nil {
+				e.err = err
+			}
+			n += w / 2
+
+			p = p[chunk:]
+			s = common
+			counter++
+		}
 	}
 
 	e.f <- true
 
 	return n, e.err
+}
+
+func (e *encoder) encodeAndWrite(p []byte, chunk int, s string) (int, error) {
+	var i int
+	for i = 0; i < chunk-1; i++ {
+		s += string(encode(p[i]))
+		s += " "
+	}
+	s += string(encode(p[i]))
+	s += "\n"
+
+	fmt.Printf("writing: %s", s)
+
+	e.mu.RLock()
+	w, err := e.w.Write([]byte(s))
+	e.mu.RUnlock()
+
+	return w, err
 }
 
 func newEncoder(w io.Writer, f chan bool, mu *sync.RWMutex) *encoder {

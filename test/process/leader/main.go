@@ -9,7 +9,9 @@ import (
 )
 
 func main() {
-	c, err := controller.New(0)
+	sim := true
+	leader := 0
+	c, err := controller.New(leader, sim)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}

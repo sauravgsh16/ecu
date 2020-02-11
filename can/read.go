@@ -43,20 +43,20 @@ func fromHexChar(ch byte) (byte, bool) {
 }
 
 func decode(dst, src []byte) (int, int, error) {
-	i, j, s := 0, 0, 0
+	i, j, k := 0, 0, 0
 	for i < len(src) && j < len(dst) {
 		if src[i] == ' ' {
 			i++
-			s++
+			k++
 			continue
 		}
 		a, ok := fromHexChar(src[i])
 		if !ok {
-			return j, s, invalidByte(src[i])
+			return j, k, invalidByte(src[i])
 		}
 		b, ok := fromHexChar(src[i+1])
 		if !ok {
-			return j, s, invalidByte(src[i+1])
+			return j, k, invalidByte(src[i+1])
 		}
 
 		dst[j] = (a << 4) | b
@@ -64,7 +64,7 @@ func decode(dst, src []byte) (int, int, error) {
 		j++
 	}
 
-	return j, s, nil
+	return j, k, nil
 }
 
 func (d *decoder) Read(p []byte) (n int, err error) {

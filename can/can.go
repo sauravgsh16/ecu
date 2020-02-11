@@ -2,10 +2,12 @@ package can
 
 import (
 	"bufio"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"strings"
 	"sync"
 )
 
@@ -25,6 +27,7 @@ func newTp(m *Message) *tp {
 	// TODO: @Gourab: needs to get index of bytes which form PGN
 
 	return &tp{
+		pgn:    hex.EncodeToString(m.Data[6:]),
 		size:   int(m.Data[1]),
 		frames: int(m.Data[3]),
 		data:   make([]byte, 0, int(m.Data[1])),
@@ -120,7 +123,6 @@ func (c *Can) processIncoming() {
 	handle := make(chan *tp)
 
 	go func() {
-		var count int
 	loop:
 		for {
 			select {
@@ -150,18 +152,18 @@ func (c *Can) processIncoming() {
 					}
 
 					if fc >= c.currTP.frames {
-						//fmt.Printf("%#v\n: len: %d\n", c.currTP, len(c.currTP.data))
-						// process currTp before setting to nil
-						count++
+						fmt.Printf("%#v\n", c.currTP)
+						// TODO: process currTp before setting to nil
 
 						c.currTP = nil
 						fc = 0
 						c.wg.Done()
 					}
+				default:
+					fmt.Println("Here")
 				}
 			}
 		}
-		fmt.Printf("received: %d\n", count)
 		close(handle)
 	}()
 	go c.handleMessage(handle)
@@ -227,6 +229,7 @@ func isPrefix(s, substr string) bool {
 	}
 
 	i := 0
+	s = strings.ToUpper(s)
 	for i < len(substr) {
 		if s[i] != substr[i] {
 			return false

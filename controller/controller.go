@@ -41,14 +41,14 @@ type controller struct {
 }
 
 // New returns a new controller
-func New(kind int) (Controller, error) {
+func New(kind int, sim bool) (Controller, error) {
 	var err error
 	c := &controller{
 		ctype: kind,
 	}
 
 	c.ctx, c.cancel = context.WithTimeout(context.Background(), timeout*time.Second)
-	c.service, err = service.NewEcu(kind)
+	c.service, err = service.NewEcu(kind, sim)
 	if err != nil {
 		return nil, err
 	}
@@ -176,13 +176,7 @@ func (c *controller) Wait(done chan interface{}) (chan string, chan error) {
 }
 
 func (c *controller) StartReceiverRoutines(w chan string, errCh chan error) {
-	switch t := c.service.(type) {
-	case *service.LeaderEcu:
-		t.CreateUnicastHandlers(w, errCh)
-
-	case *service.MemberEcu:
-		t.CreateUnicastHandlers(w, errCh)
-	}
+	c.service.CreateUnicastHandlers(w, errCh, c.ctype)
 }
 
 func (c *controller) CloseClient() {

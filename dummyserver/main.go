@@ -14,7 +14,7 @@ func main() {
 	}
 	log.Println("Listening on :19000")
 
-	_ = []string{
+	tp := []string{
 		"xtd 02 1CECF7E8 08 10 23 05 05 FF 00 CB 00\n",
 		"xtd 02 1CEBF7E8 08 01 61 44 56 43 00 00 14\n",
 		"xtd 02 1CEBF7E8 08 02 41 45 46 5F 53 50 52\n",
@@ -30,11 +30,9 @@ func main() {
 		}
 		go read(conn)
 
-		i := 0
-		for i < 10 {
+		for _, t := range tp {
 			//conn.Write([]byte("Xtd 02 0CCBF782 08 13 00 86 00 B8 0B 00 00\n"))
-			conn.Write([]byte("Xtd 02 0CCBF782 08 13 00 86 00 B8 0B 86 86\n")) // 13 00 86 00 B8 0B 00 00\n"))
-			i++
+			conn.Write([]byte(t)) // 13 00 86 00 B8 0B 00 00\n"))
 		}
 	}
 
@@ -45,9 +43,12 @@ func read(c net.Conn) {
 		b := make([]byte, 43)
 		if _, err := io.ReadFull(c, b[:43]); err != nil {
 			if err == io.EOF {
-				fmt.Printf("Continuing\n")
+				break
 			}
-			log.Printf(err.Error())
+			if netErr, ok := err.(net.Error); ok {
+				log.Printf(netErr.Error())
+				break
+			}
 		}
 		fmt.Printf("%s", string(b))
 	}

@@ -47,14 +47,6 @@ func (m *Message) group() ([]byte, error) {
 		return nil, err
 	}
 
-	// writing size not necessary
-	// needs to be dynamically written
-	/*
-		if err := binary.Write(buf, binary.BigEndian, m.Size); err != nil {
-			return nil, err
-		}
-	*/
-
 	if _, err := buf.Write(m.Data); err != nil {
 		return nil, err
 	}

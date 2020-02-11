@@ -40,6 +40,7 @@ var (
 type ECU interface {
 	Close()
 	GetDomainID() string
+	CreateUnicastHandlers(chan string, chan error, int)
 }
 
 type rekeytimer struct {
@@ -85,6 +86,7 @@ type swService struct {
 	rktimer *rekeytimer
 	first   bool
 	repeat  bool
+	joinCh  chan bool
 }
 
 func (sw *swService) getID() string {
@@ -281,6 +283,59 @@ func (e *ecuService) multiplexlisteners() {
 	}()
 }
 
+func (e *ecuService) CreateUnicastHandlers(idCh chan string, errCh chan error, kind int) {
+	switch kind {
+	case leader:
+		go func() {
+		loop:
+			for {
+				select {
+				case id := <-idCh:
+					if err := e.createSender(id, config.SendSn, handler.NewSendSnSender); err != nil {
+						log.Fatalf(err.Error())
+					}
+
+					if err := e.createReceiver(id, handler.NewJoinReceiver); err != nil {
+						log.Fatalf(err.Error())
+					}
+
+				case err := <-errCh:
+					log.Printf(err.Error())
+					break loop
+				}
+			}
+		}()
+	case member:
+		go func() {
+			select {
+			case <-idCh:
+				switch m := e.s.(type) {
+				case *swService:
+					if err := e.createReceiver(m.domain.ID, handler.NewSendSnReceiver); err != nil {
+						log.Fatalf(err.Error())
+					}
+					if err := e.createSender(m.domain.ID, config.Join, handler.NewJoinSender); err != nil {
+						log.Fatalf(err.Error())
+					}
+					m.joinCh <- true
+
+				case *hwService:
+					if err := e.createReceiver(m.ID, handler.NewSendSnReceiver); err != nil {
+						log.Fatalf(err.Error())
+					}
+					if err := e.createSender(m.ID, config.Join, handler.NewJoinSender); err != nil {
+						log.Fatalf(err.Error())
+					}
+					m.joinCh <- true
+				}
+
+			case err := <-errCh:
+				log.Fatalf(err.Error())
+			}
+		}()
+	}
+}
+
 func (e *ecuService) generateMessage(payload []byte) *client.Message {
 	uuid := fmt.Sprintf("%s", uuid.Must(uuid.NewV4()))
 
@@ -367,9 +422,6 @@ func (e *ecuService) GetDomainID() string {
 }
 
 func (e *ecuService) handleRekey(msg *client.Message) {
-	if msg.Metadata.Get(appKey) == e.s.(*swService).domain.ID {
-		return
-	}
 
 	log.Printf("Received rekey from AppID:\n")
 	fmt.Printf("%#v\n", msg.Metadata.Get("ApplicationID"))
@@ -391,9 +443,7 @@ func (e *ecuService) handleRekey(msg *client.Message) {
 
 func (e *ecuService) handleReceiveNonce(msg *client.Message) error {
 	t := e.s.(*swService)
-	if msg.Metadata.Get(appKey) == t.domain.ID {
-		return nil
-	}
+
 	log.Printf("Received Nonce From:\n")
 	fmt.Printf("%#v\n", msg.Metadata.Get("ApplicationID"))
 	fmt.Printf("%#v\n", msg.Metadata.Get("Exchange"))
@@ -514,7 +564,6 @@ func (e *ecuService) listenTimer() {
 		for {
 			select {
 			case <-t.rktimer.timer.C:
-				fmt.Printf("TIMER EXITED\n\n")
 				go e.handleSvCreation()
 				break loop
 			case <-ticker.C:
@@ -551,12 +600,18 @@ func (e *ecuService) send(s handler.Sender, b []byte, content string) error {
 }
 
 // NewEcu returns a new ECU
-func NewEcu(kind int) (ECU, error) {
+func NewEcu(kind int, sim bool) (ECU, error) {
 	switch kind {
 	case leader:
-		return newLeader(leaderConfig())
+		if sim {
+			return newLeader(leaderConfig())
+		}
+		return newLeaderHW(leaderConfig())
 	case member:
-		return newMember(memberConfig())
+		if sim {
+			return newMember(memberConfig())
+		}
+		return newMemberHW(memberConfig())
 	default:
 		panic("unknown ecu kind")
 	}
@@ -570,8 +625,8 @@ func StartListeners(e ECU) {
 	case *MemberEcu:
 		t.StartListeners()
 	case *LeaderEcuHW:
-		// TODO
+		t.StartListeners()
 	case *MemberEcuHW:
-		// TODO
+		t.StartListeners()
 	}
 }

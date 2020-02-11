@@ -9,7 +9,6 @@ import (
 
 	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
-	"github.com/sauravgsh16/ecu/handler"
 	"github.com/sauravgsh16/ecu/util"
 )
 
@@ -43,39 +42,6 @@ func newLeader(c *ecuConfig) (*LeaderEcu, error) {
 	return l, nil
 }
 
-// CreateUnicastHandlers creates handler which leaders require
-func (l *LeaderEcu) CreateUnicastHandlers(idCh chan string, errCh chan error) {
-	go func() {
-	loop:
-		for {
-			select {
-			case id := <-idCh:
-				go l.createHandlers(id)
-			case err := <-errCh:
-				log.Printf(err.Error())
-				break loop
-			}
-		}
-	}()
-}
-
-func (l *LeaderEcu) createHandlers(id string) {
-	l.createJoinReceiver(id)
-	l.createSnSender(id)
-}
-
-func (l *LeaderEcu) createSnSender(id string) {
-	if err := l.createSender(id, config.SendSn, handler.NewSendSnSender); err != nil {
-		log.Fatalf(err.Error())
-	}
-}
-
-func (l *LeaderEcu) createJoinReceiver(id string) {
-	if err := l.createReceiver(id, handler.NewJoinReceiver); err != nil {
-		log.Fatalf(err.Error())
-	}
-}
-
 // StartListeners starts the listeners for a leader
 func (l *LeaderEcu) StartListeners() {
 	go func() {
@@ -90,6 +56,9 @@ func (l *LeaderEcu) StartListeners() {
 					fmt.Println("Received Sn. Irrelevant Context.")
 
 				case config.Nonce:
+					if i.msg.Metadata.Get(appKey) == l.s.(*swService).domain.ID {
+						continue
+					}
 					go l.handleReceiveNonce(i.msg)
 
 				case config.Rekey:

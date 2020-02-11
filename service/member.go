@@ -7,53 +7,27 @@ import (
 
 	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
-	"github.com/sauravgsh16/ecu/handler"
 	"github.com/sauravgsh16/ecu/util"
 )
 
 // MemberEcu struct
 type MemberEcu struct {
 	ecuService
-	joinCh chan bool
 }
 
 func newMember(c *ecuConfig) (*MemberEcu, error) {
 	m := new(MemberEcu)
 	m.initializeFields()
-	m.s = &swService{}
+	m.s = &swService{
+		joinCh: make(chan bool),
+	}
 	initEcu(m.s, c)
 
 	if err := m.init(c); err != nil {
 		return nil, err
 	}
 
-	m.joinCh = make(chan bool)
-
 	return m, nil
-}
-
-// CreateUnicastHandlers creates handler which memebers require
-func (m *MemberEcu) CreateUnicastHandlers(idCh chan string, errCh chan error) {
-	go func() {
-		select {
-		case <-idCh:
-			go m.createHandlers()
-		case err := <-errCh:
-			log.Fatalf(err.Error())
-		}
-	}()
-}
-
-func (m *MemberEcu) createHandlers() {
-	if err := m.createReceiver(m.s.(*swService).domain.ID, handler.NewSendSnReceiver); err != nil {
-		log.Fatalf(err.Error())
-	}
-	if err := m.createSender(m.s.(*swService).domain.ID, config.Join, handler.NewJoinSender); err != nil {
-		log.Fatalf(err.Error())
-	}
-	select {
-	case m.joinCh <- true:
-	}
 }
 
 // StartListeners starts the listeners for a member
@@ -70,9 +44,15 @@ func (m *MemberEcu) StartListeners() {
 					go m.handleAnnounceVin(i.msg)
 
 				case config.Rekey:
+					if i.msg.Metadata.Get(appKey) == m.s.(*swService).domain.ID {
+						continue
+					}
 					go m.handleRekey(i.msg)
 
 				case config.Nonce:
+					if i.msg.Metadata.Get(appKey) == m.s.(*swService).domain.ID {
+						continue
+					}
 					go m.handleReceiveNonce(i.msg)
 
 				default:
@@ -104,7 +84,6 @@ func (m *MemberEcu) handleUnicast() {
 					fmt.Println(i.msg)
 				}
 			}
-
 		}
 	}()
 }
@@ -142,7 +121,7 @@ func (m *MemberEcu) handleAnnounceVin(msg *client.Message) {
 // SendJoin sends join request to the leader
 func (m *MemberEcu) SendJoin() {
 	select {
-	case <-m.joinCh:
+	case <-m.s.(*swService).joinCh:
 	}
 
 	sender, ok := m.senders[util.JoinString(config.Join, m.s.(*swService).domain.ID)]
