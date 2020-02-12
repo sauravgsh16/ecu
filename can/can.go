@@ -80,14 +80,21 @@ func (c *Can) handleIncoming() {
 			log.Printf(err.Error())
 			continue
 		}
+		fmt.Printf("%#v\n\n", msg)
+
 		c.In <- msg
 	}
 	close(c.In)
 }
 
 func (c *Can) processIncoming() {
-	var fc int
 	handle := make(chan *TP)
+
+	var (
+		fc   int
+		size int
+		err  error
+	)
 
 	go func() {
 	loop:
@@ -105,7 +112,10 @@ func (c *Can) processIncoming() {
 						c.wg.Wait()
 					}
 
-					c.currTP = newTp(msg)
+					if c.currTP, err = newTp(msg); err != nil {
+						continue
+					}
+					size = int(c.currTP.size)
 					c.wg.Add(1)
 
 				case isPrefix(msg.PGN, "EB"):
@@ -113,17 +123,27 @@ func (c *Can) processIncoming() {
 						log.Fatalf("invalid tp pgn '%s' received, before receving tp initial tp info", msg.PGN)
 					}
 
-					if fc < c.currTP.frames {
-						c.currTP.append(msg.Data[1:])
+					if fc < c.currTP.frames && size > 0 {
+						l := len(msg.Data[1:])
+
+						if size >= l {
+							c.currTP.append(msg.Data[1:])
+							size -= l
+						} else {
+							c.currTP.append(msg.Data[1 : size+1])
+							size = 0
+						}
 						fc++
 					}
 
 					if fc >= c.currTP.frames {
+						fmt.Printf("%#v\n", c.currTP)
+
 						// handle <- c.currTP
-						fmt.Printf("%#v\n, len:%d\n", c.currTP, len(c.currTP.Data))
 
 						c.currTP = nil
 						fc = 0
+						size = 0
 						c.wg.Done()
 					}
 				default:

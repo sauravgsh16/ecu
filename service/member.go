@@ -22,7 +22,9 @@ func newMember(c *ecuConfig, initCh chan bool) (*MemberEcu, error) {
 		joinCh: make(chan bool),
 		idCh:   m.idCh,
 	}
-	initEcu(m.s, c)
+	if err := initEcu(m.s, c); err != nil {
+		return nil, err
+	}
 
 	done := make(chan error)
 

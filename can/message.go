@@ -78,20 +78,25 @@ func (m *Message) parseArbitrationID() error {
 // TP Can Message
 type TP struct {
 	Pgn    string
-	size   int
+	Src    byte
+	Dst    byte
+	size   int16
 	frames int
 	Data   []byte
 	mux    sync.Mutex
 }
 
-func newTp(m *Message) *TP {
+func newTp(m *Message) (*TP, error) {
+	var s int16
+	s = int16(m.Data[2])<<8 | int16(m.Data[1])
 	return &TP{
-		Pgn: hex.EncodeToString([]byte{m.Data[5], m.Data[6]}),
-		// TODO: change package format
-		size:   int(m.Data[2] + m.Data[1]),
+		Pgn:    hex.EncodeToString([]byte{m.Data[6], m.Data[5]}),
+		Src:    m.Src,
+		Dst:    m.Dst,
+		size:   s,
 		frames: int(m.Data[3]),
 		Data:   make([]byte, 0, int(m.Data[1])),
-	}
+	}, nil
 }
 
 func (t *TP) currSize() int {

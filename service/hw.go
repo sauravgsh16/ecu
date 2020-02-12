@@ -2,11 +2,13 @@ package service
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 	"sync"
 
 	"github.com/sauravgsh16/ecu/can"
 	"github.com/sauravgsh16/ecu/config"
+	"github.com/sauravgsh16/ecu/handler"
 )
 
 type hwService struct {
@@ -60,6 +62,7 @@ func newLeaderHW(c *ecuConfig, initCh chan bool) (*LeaderEcuHW, error) {
 		close(done)
 	}()
 	l.init(c, done)
+	l.s.(*hwService).can.Init()
 
 	return l, nil
 }
@@ -125,24 +128,19 @@ func (l *LeaderEcuHW) handleUnicast() {
 func (l *LeaderEcuHW) handleCanIncoming() {
 	go func() {
 		for tp := range l.s.(*hwService).Incoming {
-			fmt.Printf("%#v\n", tp)
-
 			switch tp.Pgn {
 
 			// announce Sn
-			case "FF02":
-				msg := l.generateMessage(tp.Data)
-				fmt.Printf("PRINTING INCOMING SN\n\n")
-				fmt.Printf("%#v\n", msg)
-
+			case "ff02":
+				go l.announceSnHW(tp)
 			// announce VIN
-			case "B100":
-
+			case "ff03":
+				go l.announceVinHW(tp)
 			// send Join
 			case "B200":
 
 			// send Sn
-			case "B300":
+			case "0100":
 
 			// start rekey
 			case "B400":
@@ -153,6 +151,29 @@ func (l *LeaderEcuHW) handleCanIncoming() {
 			}
 		}
 	}()
+}
+
+func (l *LeaderEcuHW) announceSnHW(tp *can.TP) {
+	h, ok := l.broadcasters[config.Sn]
+	if !ok {
+		log.Fatalf("announce Sn handler not found")
+	}
+	l.announce(tp, h)
+}
+
+func (l *LeaderEcuHW) announceVinHW(tp *can.TP) {
+	h, ok := l.broadcasters[config.Vin]
+	if !ok {
+		log.Fatalf("announce Sn handler not found")
+	}
+	l.announce(tp, h)
+}
+
+func (l *LeaderEcuHW) announce(tp *can.TP, s handler.Sender) {
+	msg := l.generateMessage(tp.Data)
+	if err := s.Send(msg); err != nil {
+		log.Fatalf("error sending announce sn: %s", err.Error())
+	}
 }
 
 // MemberEcuHW is a member interface with h/w

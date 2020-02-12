@@ -77,7 +77,7 @@ func New(kind int) (*Ecu, error) {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	e.CertLoc = filepath.Join(dir, "../../../", config.DefaultCertificateLocation)
+	e.CertLoc = filepath.Join(dir, "../../../../", config.DefaultCertificateLocation)
 
 	if _, err := rand.Read(e.encKey); err != nil {
 		return nil, err

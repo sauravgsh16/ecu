@@ -62,6 +62,15 @@ func main() {
 		"Xtd 01 1CEBFF12 08 03 5B B3 FF FF FF FF FF\n",
 	}
 
+	_ = []string{
+		"Xtd 01 1CEC2612 08 10 20 00 05 05 00 01 01\n",
+		"Xtd 01 1CEB2612 08 01 00 00 00 00 00 00 00\n",
+		"Xtd 01 1CEB2612 08 02 00 00 00 00 00 00 00\n",
+		"Xtd 01 1CEB2612 08 03 00 00 00 00 00 00 00\n",
+		"Xtd 01 1CEB2612 08 04 00 00 00 00 00 00 00\n",
+		"Xtd 01 1CEB2612 08 05 00 00 00 00 FF FF FF\n",
+	}
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {

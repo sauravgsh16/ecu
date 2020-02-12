@@ -3,6 +3,7 @@ package can
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/url"
@@ -70,6 +71,7 @@ func dial(url string) (*Connection, error) {
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println("Successfully connected to CAN interface")
 
 	return open(conn), nil
 }

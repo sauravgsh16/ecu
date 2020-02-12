@@ -26,7 +26,9 @@ func newLeader(c *ecuConfig, initCh chan bool) (*LeaderEcu, error) {
 	l.s = &swService{
 		idCh: l.idCh,
 	}
-	initEcu(l.s, c)
+	if err := initEcu(l.s, c); err != nil {
+		return nil, err
+	}
 	l.certs = make(map[string][]byte)
 
 	done := make(chan error)
