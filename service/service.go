@@ -39,7 +39,8 @@ var (
 // ECU interface
 type ECU interface {
 	Close()
-	GetDomainID() string
+	GetID() string
+	SetID(string)
 	CreateUnicastHandlers(chan string, chan error, int)
 }
 
@@ -79,6 +80,7 @@ type incoming struct {
 
 type service interface {
 	getID() string
+	setID(string)
 }
 
 type swService struct {
@@ -87,10 +89,19 @@ type swService struct {
 	first   bool
 	repeat  bool
 	joinCh  chan bool
+	idCh    chan bool
 }
 
 func (sw *swService) getID() string {
 	return sw.domain.ID
+}
+
+func (sw *swService) setID(id string) {
+	sw.domain.SetID(id)
+
+	select {
+	case sw.idCh <- true:
+	}
 }
 
 type ecuService struct {
@@ -102,6 +113,7 @@ type ecuService struct {
 	incoming     chan *incoming
 	unicastCh    chan *incoming
 	done         chan interface{}
+	idCh         chan bool
 	flagMux      sync.RWMutex
 	mux          sync.RWMutex
 	unicastRe    *regexp.Regexp
@@ -123,8 +135,8 @@ func initEcu(s service, c *ecuConfig) error {
 		t.first = true
 
 	case *hwService:
-		t.ID = fmt.Sprintf("%s", uuid.Must(uuid.NewV4()))
-		if t.can, err = can.New(); err != nil {
+		t.Incoming = make(chan *can.TP)
+		if t.can, err = can.New(t.Incoming); err != nil {
 			return err
 		}
 
@@ -143,6 +155,7 @@ func (e *ecuService) initializeFields() {
 	e.incoming = make(chan *incoming)
 	e.unicastCh = make(chan *incoming)
 	e.done = make(chan interface{})
+	e.idCh = make(chan bool)
 	e.unicastRe = regexp.MustCompile(`^(?P<type>.*?)\.`)
 }
 
@@ -204,38 +217,42 @@ func (e *ecuService) Close() {
 	wg.Wait()
 }
 
-func (e *ecuService) init(c *ecuConfig) error {
+func (e *ecuService) init(c *ecuConfig, done chan error) {
 	var err error
 
-	// Register broadcasters
-	for _, h := range c.broadcasters {
-		b, err := h()
-		if err != nil {
-			return err
+	go func(er error) {
+		select {
+		case <-e.idCh:
+			// Register broadcasters
+			for _, h := range c.broadcasters {
+				b, err := h()
+				if err != nil {
+					er = err
+				}
+				e.broadcasters[b.GetName()] = b
+			}
+
+			// Register subscribers
+			for _, h := range c.subscribers {
+				s, err := h(e.s.getID())
+				if err != nil {
+					er = err
+				}
+				e.subscribers[s.GetName()] = &listenerch{
+					h:    s,
+					done: make(chan interface{}),
+					name: s.GetName(),
+				}
+			}
+
+			if err = e.startconsumers(); err != nil {
+				er = err
+			}
+
+			e.multiplexlisteners()
+			done <- er
 		}
-		e.broadcasters[b.GetName()] = b
-	}
-
-	// Register subscribers
-	for _, h := range c.subscribers {
-		s, err := h(e.s.getID()) // CHANGED HERE FROM e.domain.ID
-		if err != nil {
-			return err
-		}
-		e.subscribers[s.GetName()] = &listenerch{
-			h:    s,
-			done: make(chan interface{}),
-			name: s.GetName(),
-		}
-	}
-
-	if err = e.startconsumers(); err != nil {
-		return err
-	}
-
-	e.multiplexlisteners()
-
-	return nil
+	}(err)
 }
 
 func (e *ecuService) startconsumers() error {
@@ -309,24 +326,17 @@ func (e *ecuService) CreateUnicastHandlers(idCh chan string, errCh chan error, k
 		go func() {
 			select {
 			case <-idCh:
-				switch m := e.s.(type) {
+				if err := e.createReceiver(e.s.getID(), handler.NewSendSnReceiver); err != nil {
+					log.Fatalf(err.Error())
+				}
+				if err := e.createSender(e.s.getID(), config.Join, handler.NewJoinSender); err != nil {
+					log.Fatalf(err.Error())
+				}
+				switch t := e.s.(type) {
 				case *swService:
-					if err := e.createReceiver(m.domain.ID, handler.NewSendSnReceiver); err != nil {
-						log.Fatalf(err.Error())
-					}
-					if err := e.createSender(m.domain.ID, config.Join, handler.NewJoinSender); err != nil {
-						log.Fatalf(err.Error())
-					}
-					m.joinCh <- true
-
+					t.joinCh <- true
 				case *hwService:
-					if err := e.createReceiver(m.ID, handler.NewSendSnReceiver); err != nil {
-						log.Fatalf(err.Error())
-					}
-					if err := e.createSender(m.ID, config.Join, handler.NewJoinSender); err != nil {
-						log.Fatalf(err.Error())
-					}
-					m.joinCh <- true
+					t.joinCh <- true
 				}
 
 			case err := <-errCh:
@@ -343,7 +353,7 @@ func (e *ecuService) generateMessage(payload []byte) *client.Message {
 		UUID:    uuid,
 		Payload: client.Payload(payload),
 		Metadata: client.Metadata(map[string]interface{}{
-			"ApplicationID": e.s.(*swService).domain.ID,
+			"ApplicationID": e.s.getID(),
 		}),
 	}
 }
@@ -417,8 +427,12 @@ func (e *ecuService) createReceiver(id string, h func(string) (handler.Receiver,
 	return nil
 }
 
-func (e *ecuService) GetDomainID() string {
-	return e.s.(*swService).domain.ID
+func (e *ecuService) GetID() string {
+	return e.s.getID()
+}
+
+func (e *ecuService) SetID(id string) {
+	e.s.setID(id)
 }
 
 func (e *ecuService) handleRekey(msg *client.Message) {
@@ -600,18 +614,18 @@ func (e *ecuService) send(s handler.Sender, b []byte, content string) error {
 }
 
 // NewEcu returns a new ECU
-func NewEcu(kind int, sim bool) (ECU, error) {
+func NewEcu(kind int, sim bool, initCh chan bool) (ECU, error) {
 	switch kind {
 	case leader:
 		if sim {
-			return newLeader(leaderConfig())
+			return newLeader(leaderConfig(), initCh)
 		}
-		return newLeaderHW(leaderConfig())
+		return newLeaderHW(leaderConfig(), initCh)
 	case member:
 		if sim {
-			return newMember(memberConfig())
+			return newMember(memberConfig(), initCh)
 		}
-		return newMemberHW(memberConfig())
+		return newMemberHW(memberConfig(), initCh)
 	default:
 		panic("unknown ecu kind")
 	}

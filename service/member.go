@@ -15,17 +15,28 @@ type MemberEcu struct {
 	ecuService
 }
 
-func newMember(c *ecuConfig) (*MemberEcu, error) {
+func newMember(c *ecuConfig, initCh chan bool) (*MemberEcu, error) {
 	m := new(MemberEcu)
 	m.initializeFields()
 	m.s = &swService{
 		joinCh: make(chan bool),
+		idCh:   m.idCh,
 	}
 	initEcu(m.s, c)
 
-	if err := m.init(c); err != nil {
-		return nil, err
-	}
+	done := make(chan error)
+
+	go func() {
+		select {
+		case err := <-done:
+			if err != nil {
+				panic(err)
+			}
+			initCh <- true
+		}
+		close(done)
+	}()
+	m.init(c, done)
 
 	return m, nil
 }
@@ -44,13 +55,13 @@ func (m *MemberEcu) StartListeners() {
 					go m.handleAnnounceVin(i.msg)
 
 				case config.Rekey:
-					if i.msg.Metadata.Get(appKey) == m.s.(*swService).domain.ID {
+					if i.msg.Metadata.Get(appKey) == m.s.getID() {
 						continue
 					}
 					go m.handleRekey(i.msg)
 
 				case config.Nonce:
-					if i.msg.Metadata.Get(appKey) == m.s.(*swService).domain.ID {
+					if i.msg.Metadata.Get(appKey) == m.s.getID() {
 						continue
 					}
 					go m.handleReceiveNonce(i.msg)
@@ -124,7 +135,7 @@ func (m *MemberEcu) SendJoin() {
 	case <-m.s.(*swService).joinCh:
 	}
 
-	sender, ok := m.senders[util.JoinString(config.Join, m.s.(*swService).domain.ID)]
+	sender, ok := m.senders[util.JoinString(config.Join, m.s.getID())]
 	if !ok {
 		panic("join Handler not found")
 	}
@@ -144,7 +155,7 @@ func (m *MemberEcu) SendJoin() {
 		log.Printf("Error while creating payload: %s", err.Error())
 	}
 
-	log.Printf("Sent Join from - AppID: %s\n", m.s.(*swService).domain.ID)
+	log.Printf("Sent Join from - AppID: %s\n", m.s.getID())
 
 	if err := m.send(sender, cert, "cert"); err != nil {
 		// TODO: Better Error Handling

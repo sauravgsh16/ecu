@@ -3,19 +3,35 @@ package service
 import (
 	"fmt"
 	"strconv"
+	"sync"
 
 	"github.com/sauravgsh16/ecu/can"
 	"github.com/sauravgsh16/ecu/config"
 )
 
 type hwService struct {
-	ID     string
-	can    *can.Can
-	joinCh chan bool
+	ID       string
+	SrcID    string
+	can      *can.Can
+	joinCh   chan bool
+	idCh     chan bool
+	mux      sync.Mutex
+	Incoming chan *can.TP
 }
 
 func (hw *hwService) getID() string {
-	return hw.ID
+	return hw.SrcID
+}
+
+func (hw *hwService) setID(id string) {
+	hw.mux.Lock()
+	defer hw.mux.Unlock()
+
+	hw.SrcID = id
+
+	select {
+	case hw.idCh <- true:
+	}
 }
 
 // LeaderEcuHW is a leader interface with the h/w
@@ -23,15 +39,28 @@ type LeaderEcuHW struct {
 	ecuService
 }
 
-func newLeaderHW(c *ecuConfig) (*LeaderEcuHW, error) {
+func newLeaderHW(c *ecuConfig, initCh chan bool) (*LeaderEcuHW, error) {
 	l := new(LeaderEcuHW)
 	l.initializeFields()
-	l.s = &hwService{}
+	l.s = &hwService{
+		idCh: l.idCh,
+	}
 	initEcu(l.s, c)
 
-	if err := l.init(c); err != nil {
-		return nil, err
-	}
+	done := make(chan error)
+
+	go func() {
+		select {
+		case err := <-done:
+			if err != nil {
+				panic(err)
+			}
+			initCh <- true
+		}
+		close(done)
+	}()
+	l.init(c, done)
+
 	return l, nil
 }
 
@@ -56,7 +85,7 @@ func (l *LeaderEcuHW) StartListeners() {
 					*/
 
 				case config.Rekey:
-					if i.msg.Metadata.Get(appKey) == l.s.(*hwService).ID {
+					if i.msg.Metadata.Get(appKey) == l.s.getID() {
 						continue
 					}
 
@@ -80,12 +109,47 @@ func (l *LeaderEcuHW) handleUnicast() {
 				switch name {
 
 				case config.Join:
+					// TODO: need to write Join request
 
 				default:
 					// TODO: HANDLE NORMAL MESSAGE"
 					// TODO: Send to normal message write
 
 				}
+			}
+		}
+	}()
+	l.handleCanIncoming()
+}
+
+func (l *LeaderEcuHW) handleCanIncoming() {
+	go func() {
+		for tp := range l.s.(*hwService).Incoming {
+			fmt.Printf("%#v\n", tp)
+
+			switch tp.Pgn {
+
+			// announce Sn
+			case "FF02":
+				msg := l.generateMessage(tp.Data)
+				fmt.Printf("PRINTING INCOMING SN\n\n")
+				fmt.Printf("%#v\n", msg)
+
+			// announce VIN
+			case "B100":
+
+			// send Join
+			case "B200":
+
+			// send Sn
+			case "B300":
+
+			// start rekey
+			case "B400":
+
+			// send nonce
+			case "B500":
+
 			}
 		}
 	}()
@@ -96,17 +160,28 @@ type MemberEcuHW struct {
 	ecuService
 }
 
-func newMemberHW(c *ecuConfig) (*MemberEcuHW, error) {
+func newMemberHW(c *ecuConfig, initCh chan bool) (*MemberEcuHW, error) {
 	m := new(MemberEcuHW)
 	m.initializeFields()
 	m.s = &hwService{
 		joinCh: make(chan bool),
+		idCh:   m.idCh,
 	}
 	initEcu(m.s, c)
 
-	if err := m.init(c); err != nil {
-		return nil, err
-	}
+	done := make(chan error)
+
+	go func() {
+		select {
+		case err := <-done:
+			if err != nil {
+				panic(err)
+			}
+			initCh <- true
+		}
+		close(done)
+	}()
+	m.init(c, done)
 
 	return m, nil
 }
@@ -123,12 +198,12 @@ func (m *MemberEcuHW) StartListeners() {
 				case config.Vin:
 
 				case config.Rekey:
-					if i.msg.Metadata.Get(appKey) == m.s.(*hwService).ID {
+					if i.msg.Metadata.Get(appKey) == m.s.getID() {
 						continue
 					}
 
 				case config.Nonce:
-					if i.msg.Metadata.Get(appKey) == m.s.(*hwService).ID {
+					if i.msg.Metadata.Get(appKey) == m.s.getID() {
 						continue
 					}
 
@@ -176,7 +251,7 @@ func prepareCanMsg(src, dst byte, data []byte, pgn []byte) ([]*can.Message, erro
 	// EC message
 	msgs = append(msgs, &can.Message{
 		ArbitrationID: []uint8{0x00, 0xec, src, dst},
-		Data:          []uint8{0x00, size, 0x00, frames, 0x00, 0x00, pgn[0], pgn[1]},
+		Data:          []uint8{0x00, size, 0x00, frames, 0x00, pgn[1], pgn[0], 0x00},
 	})
 
 	// EB message

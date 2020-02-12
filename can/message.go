@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -72,4 +73,38 @@ func (m *Message) parseArbitrationID() error {
 
 	m.PGN = strings.ToUpper(hex.EncodeToString(pgn))
 	return nil
+}
+
+// TP Can Message
+type TP struct {
+	Pgn    string
+	size   int
+	frames int
+	Data   []byte
+	mux    sync.Mutex
+}
+
+func newTp(m *Message) *TP {
+	return &TP{
+		Pgn: hex.EncodeToString([]byte{m.Data[5], m.Data[6]}),
+		// TODO: change package format
+		size:   int(m.Data[2] + m.Data[1]),
+		frames: int(m.Data[3]),
+		Data:   make([]byte, 0, int(m.Data[1])),
+	}
+}
+
+func (t *TP) currSize() int {
+	return len(t.Data)
+}
+
+func (t *TP) append(d []byte) {
+	t.mux.Lock()
+	defer t.mux.Unlock()
+
+	t.Data = append(t.Data, d...)
+}
+
+func (t *TP) isValid(pgn string) bool {
+	return t.Pgn == pgn
 }

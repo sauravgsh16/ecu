@@ -38,23 +38,23 @@ type controller struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
 	ctype          int
+	initCh         chan bool
 }
 
 // New returns a new controller
 func New(kind int, sim bool) (Controller, error) {
 	var err error
 	c := &controller{
-		ctype: kind,
+		ctype:  kind,
+		initCh: make(chan bool),
 	}
 
 	c.ctx, c.cancel = context.WithTimeout(context.Background(), timeout*time.Second)
-	c.service, err = service.NewEcu(kind, sim)
+	c.service, err = service.NewEcu(kind, sim, c.initCh)
 	if err != nil {
 		return nil, err
 	}
 
-	// Start the listeners associated with the ECU
-	service.StartListeners(c.service)
 	return c, c.connect()
 }
 
@@ -105,21 +105,33 @@ func (c *controller) Register() (*supervisor.RegisterNodeResponse, error) {
 	case leader:
 		req = &supervisor.RegisterNodeRequest{
 			Node: &supervisor.Node{
-				Id:   c.service.GetDomainID(),
 				Type: supervisor.Node_Leader,
 			},
 		}
 	case member:
 		req = &supervisor.RegisterNodeRequest{
 			Node: &supervisor.Node{
-				Id:   c.service.GetDomainID(),
 				Type: supervisor.Node_Member,
 			},
 		}
 	default:
 		return nil, errors.New("unknown service type")
 	}
-	return c.client.Register(c.ctx, req)
+	resp, err := c.client.Register(c.ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set Ecu ID
+	c.service.SetID(resp.Id)
+
+	select {
+	case <-c.initCh:
+		// Start the listeners associated with the ECU
+		service.StartListeners(c.service)
+	}
+
+	return resp, nil
 }
 
 func (c *controller) Wait(done chan interface{}) (chan string, chan error) {
@@ -130,7 +142,7 @@ func (c *controller) Wait(done chan interface{}) (chan string, chan error) {
 	switch c.ctype {
 	case leader:
 		waitReq := &supervisor.MemberStatusRequest{
-			Id: c.service.GetDomainID(),
+			Id: c.service.GetID(),
 		}
 		respStream, err := c.client.WatchMember(ctx, waitReq)
 		if err != nil {
@@ -157,7 +169,7 @@ func (c *controller) Wait(done chan interface{}) (chan string, chan error) {
 
 	case member:
 		waitReq := &supervisor.LeaderStatusRequest{
-			Id: c.service.GetDomainID(),
+			Id: c.service.GetID(),
 		}
 		go func(done chan interface{}) {
 			resp, err := c.client.WatchLeader(ctx, waitReq)

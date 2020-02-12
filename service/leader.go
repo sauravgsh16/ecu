@@ -20,16 +20,28 @@ type LeaderEcu struct {
 	certLoaded bool
 }
 
-func newLeader(c *ecuConfig) (*LeaderEcu, error) {
+func newLeader(c *ecuConfig, initCh chan bool) (*LeaderEcu, error) {
 	l := new(LeaderEcu)
 	l.initializeFields()
-	l.s = &swService{}
+	l.s = &swService{
+		idCh: l.idCh,
+	}
 	initEcu(l.s, c)
 	l.certs = make(map[string][]byte)
 
-	if err := l.init(c); err != nil {
-		return nil, err
-	}
+	done := make(chan error)
+
+	go func() {
+		select {
+		case err := <-done:
+			if err != nil {
+				panic(err)
+			}
+			initCh <- true
+		}
+		close(done)
+	}()
+	l.init(c, done)
 
 	if err := l.loadCerts(); err != nil {
 		return nil, err
@@ -47,6 +59,7 @@ func (l *LeaderEcu) StartListeners() {
 	go func() {
 		for {
 			for i := range l.incoming {
+
 				switch i.name {
 
 				case config.Vin:
@@ -56,13 +69,13 @@ func (l *LeaderEcu) StartListeners() {
 					fmt.Println("Received Sn. Irrelevant Context.")
 
 				case config.Nonce:
-					if i.msg.Metadata.Get(appKey) == l.s.(*swService).domain.ID {
+					if i.msg.Metadata.Get(appKey) == l.s.getID() {
 						continue
 					}
 					go l.handleReceiveNonce(i.msg)
 
 				case config.Rekey:
-					if i.msg.Metadata.Get(appKey) == l.s.(*swService).domain.ID {
+					if i.msg.Metadata.Get(appKey) == l.s.getID() {
 						continue
 					}
 					go l.AnnounceSn()
@@ -114,7 +127,7 @@ func (l *LeaderEcu) AnnounceSn() error {
 		return fmt.Errorf("announce Sn handler not found")
 	}
 
-	log.Printf("Broadcasting Sn from AppID: - %s\n", l.s.(*swService).domain.ID)
+	log.Printf("Broadcasting Sn from AppID: - %s\n", l.s.getID())
 
 	hashSn := util.GenerateHash([]byte(l.s.(*swService).domain.GetSn()))
 	if err := h.Send(l.generateMessage([]byte(hashSn))); err != nil {
@@ -137,7 +150,7 @@ func (l *LeaderEcu) AnnounceVin() error {
 		return fmt.Errorf("vim certs not loaded")
 	}
 
-	log.Printf("Broadcasting VIN from AppID: - %s\n", l.s.(*swService).domain.ID)
+	log.Printf("Broadcasting VIN from AppID: - %s\n", l.s.getID())
 
 	cert, err := l.aggregateCert()
 	if err != nil {

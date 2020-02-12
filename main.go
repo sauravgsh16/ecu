@@ -11,7 +11,10 @@ import (
 func main() {
 	forever := make(chan interface{})
 	done := make(chan interface{})
-	c, err := can.New()
+
+	in := make(chan *can.TP)
+
+	c, err := can.New(in)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
@@ -19,7 +22,7 @@ func main() {
 
 	go func() {
 		timer := time.NewTimer(5 * time.Second)
-		ticker := time.NewTicker(3 * time.Second)
+		ticker := time.NewTicker(10 * time.Second)
 		var count int
 	loop:
 		for {

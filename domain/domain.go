@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/gofrs/uuid"
 	"github.com/keep94/appcommon/kdf"
 
 	"github.com/sauravgsh16/ecu/config"
@@ -64,10 +63,7 @@ type Ecu struct {
 
 // New returns a new Ecu with sn = 0
 func New(kind int) (*Ecu, error) {
-	uuid := fmt.Sprintf("%s", uuid.Must(uuid.NewV4()))
-
 	e := &Ecu{
-		ID:       uuid,
 		encKey:   make([]byte, encKey),
 		macKey:   make([]byte, mackey),
 		sn:       make([]byte, snsize),
@@ -232,6 +228,14 @@ func (e *Ecu) CalculateSv() {
 // GetNonceAll returns Sv of the ECU
 func (e *Ecu) GetNonceAll() map[string][]byte {
 	return e.nonceAll
+}
+
+// SetSrcID sets the src id in format identified by other ECUs
+func (e *Ecu) SetID(id string) {
+	e.mux.Lock()
+	defer e.mux.Unlock()
+
+	e.ID = id
 }
 
 func (e *Ecu) loadCerts() error {

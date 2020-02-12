@@ -2,7 +2,6 @@ package can
 
 import (
 	"bufio"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
@@ -15,54 +14,21 @@ var (
 	vpsAddr = "tcp://localhost:19000"
 )
 
-type tp struct {
-	pgn    string
-	size   int
-	frames int
-	data   []byte
-	mux    sync.Mutex
-}
-
-func newTp(m *Message) *tp {
-	// TODO: @Gourab: needs to get index of bytes which form PGN
-
-	return &tp{
-		pgn:    hex.EncodeToString(m.Data[6:]),
-		size:   int(m.Data[1]),
-		frames: int(m.Data[3]),
-		data:   make([]byte, 0, int(m.Data[1])),
-	}
-}
-
-func (t *tp) currSize() int {
-	return len(t.data)
-}
-
-func (t *tp) append(d []byte) {
-	t.mux.Lock()
-	defer t.mux.Unlock()
-
-	t.data = append(t.data, d...)
-}
-
-func (t *tp) isValid(pgn string) bool {
-	return t.pgn == pgn
-}
-
 // Can struct
 type Can struct {
-	r      *reader
-	w      *writer
-	conn   *Connection
-	currTP *tp
-	In     chan *Message
-	Out    chan *Message
-	Done   chan bool
-	wg     sync.WaitGroup
+	r            *reader
+	w            *writer
+	conn         *Connection
+	currTP       *TP
+	In           chan *Message
+	Out          chan *Message
+	Done         chan bool
+	wg           sync.WaitGroup
+	ServIncoming chan *TP
 }
 
 // New returns a pointer to Can
-func New() (*Can, error) {
+func New(in chan *TP) (*Can, error) {
 	conn, err := Dial(vpsAddr)
 	if err != nil {
 		return nil, err
@@ -70,12 +36,13 @@ func New() (*Can, error) {
 	buf := bufio.NewReader(conn.Conn)
 
 	c := &Can{
-		conn: conn,
-		r:    newReader(buf),
-		w:    newWriter(conn.writer.w),
-		In:   make(chan *Message),
-		Out:  make(chan *Message),
-		Done: make(chan bool),
+		conn:         conn,
+		r:            newReader(buf),
+		w:            newWriter(conn.writer.w),
+		In:           make(chan *Message),
+		Out:          make(chan *Message),
+		Done:         make(chan bool),
+		ServIncoming: in,
 	}
 	return c, nil
 }
@@ -120,7 +87,7 @@ func (c *Can) handleIncoming() {
 
 func (c *Can) processIncoming() {
 	var fc int
-	handle := make(chan *tp)
+	handle := make(chan *TP)
 
 	go func() {
 	loop:
@@ -152,8 +119,8 @@ func (c *Can) processIncoming() {
 					}
 
 					if fc >= c.currTP.frames {
-						fmt.Printf("%#v\n", c.currTP)
-						// TODO: process currTp before setting to nil
+						// handle <- c.currTP
+						fmt.Printf("%#v\n, len:%d\n", c.currTP, len(c.currTP.Data))
 
 						c.currTP = nil
 						fc = 0
@@ -169,7 +136,7 @@ func (c *Can) processIncoming() {
 	go c.handleMessage(handle)
 }
 
-func (c *Can) handleMessage(h chan *tp) {
+func (c *Can) handleMessage(h chan *TP) {
 	for {
 		select {
 		case tp, ok := <-h:
@@ -177,26 +144,7 @@ func (c *Can) handleMessage(h chan *tp) {
 				break
 			}
 
-			switch tp.pgn {
-
-			// announce Sn
-			case "B000":
-
-			// announce VIN
-			case "B100":
-
-			// send Join
-			case "B200":
-
-			// send Sn
-			case "B300":
-
-			// start rekey
-			case "B400":
-
-			// send nonce
-			case "B500":
-			}
+			c.ServIncoming <- tp
 		}
 	}
 }
