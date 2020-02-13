@@ -102,3 +102,5 @@ Xtd 01 1CEB2612 08 04 00 00 00 00 00 00 00\n
 Xtd 01 1CEB2612 08 05 00 00 00 00 FF FF FF\n 
 
 
+T Xtd 01 18EEFFFA 08 0D DF 34 04 00 81 00 80 0   0 0000.313000    0.000000 ..4..... Address Claimed/ Address Not Claimed Message
+r Xtd 01 18EEFF12 08 56 18 23 04 00 81 00 A0 0   0 0013.313000    0.047000 V.#..... Address Claimed/ Address Not Claimed Messag
