@@ -41,7 +41,7 @@ func newLeader(c *ecuConfig, initCh chan bool) (*LeaderEcu, error) {
 			}
 			initCh <- true
 		}
-		close(done)
+		close(initCh)
 	}()
 	l.init(c, done)
 

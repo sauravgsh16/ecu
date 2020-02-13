@@ -50,7 +50,6 @@ func main() {
 	}
 
 	bp := client.BroadCastPublish{
-		URI:            url,
 		ExchangeName:   "test",
 		ExchangeNoWait: false,
 		Immediate:      false,
@@ -58,7 +57,6 @@ func main() {
 
 	config := bp.Marshal()
 	msg := &client.Message{
-		// UUID:    fmt.Sprintf("%s", uuid.Must(uuid.NewV4())),
 		UUID:    "f**k_that_shit",
 		Payload: client.Payload([]byte("a test string")),
 		Metadata: client.Metadata(map[string]interface{}{

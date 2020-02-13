@@ -36,7 +36,7 @@ func newMember(c *ecuConfig, initCh chan bool) (*MemberEcu, error) {
 			}
 			initCh <- true
 		}
-		close(done)
+		close(initCh)
 	}()
 	m.init(c, done)
 

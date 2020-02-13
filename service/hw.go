@@ -49,7 +49,10 @@ func newLeaderHW(c *ecuConfig, initCh chan bool) (*LeaderEcuHW, error) {
 	l.s = &hwService{
 		idCh: l.idCh,
 	}
-	initEcu(l.s, c)
+
+	if err := initEcu(l.s, c); err != nil {
+		return nil, err
+	}
 
 	done := make(chan error)
 
@@ -61,7 +64,7 @@ func newLeaderHW(c *ecuConfig, initCh chan bool) (*LeaderEcuHW, error) {
 			}
 			initCh <- true
 		}
-		close(done)
+		close(initCh)
 	}()
 	l.init(c, done)
 	l.s.(*hwService).can.Init()
@@ -225,7 +228,10 @@ func newMemberHW(c *ecuConfig, initCh chan bool) (*MemberEcuHW, error) {
 		joinCh: make(chan bool),
 		idCh:   m.idCh,
 	}
-	initEcu(m.s, c)
+
+	if err := initEcu(m.s, c); err != nil {
+		return nil, err
+	}
 
 	done := make(chan error)
 
@@ -237,7 +243,7 @@ func newMemberHW(c *ecuConfig, initCh chan bool) (*MemberEcuHW, error) {
 			}
 			initCh <- true
 		}
-		close(done)
+		close(initCh)
 	}()
 	m.init(c, done)
 

@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofrs/uuid"
 	"github.com/hashicorp/go-multierror"
 
 	"github.com/sauravgsh16/can-interface"
@@ -23,9 +22,10 @@ import (
 
 const (
 	// Key Names
-	appKey       = "ApplicationID"
-	contentType  = "ContentType"
-	rekeytimeout = 15
+	appKey        = "ApplicationID"
+	contentType   = "ContentType"
+	rekeytimeout  = 15
+	defaultvbsURL = "tcp://localhost:19000"
 )
 
 var (
@@ -136,7 +136,7 @@ func initEcu(s service, c *ecuConfig) error {
 
 	case *hwService:
 		t.Incoming = make(chan can.DataHolder)
-		if t.can, err = can.New(t.Incoming); err != nil {
+		if t.can, err = can.New(defaultvbsURL, t.Incoming); err != nil {
 			return err
 		}
 
@@ -252,6 +252,7 @@ func (e *ecuService) init(c *ecuConfig, done chan error) {
 			e.multiplexlisteners()
 			done <- er
 		}
+		close(done)
 	}(err)
 }
 
@@ -348,10 +349,7 @@ func (e *ecuService) CreateUnicastHandlers(watcher chan string, errCh chan error
 }
 
 func (e *ecuService) generateMessage(payload []byte) *client.Message {
-	uuid := fmt.Sprintf("%s", uuid.Must(uuid.NewV4()))
-
 	return &client.Message{
-		UUID:    uuid,
 		Payload: client.Payload(payload),
 		Metadata: client.Metadata(map[string]interface{}{
 			"ApplicationID": e.s.getID(),
