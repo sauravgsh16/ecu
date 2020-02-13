@@ -55,7 +55,7 @@ func main() {
 		"Xtd 01 1CEBFF12 08 25 37 8C 77 E1 2B FF FF\n",
 	}
 
-	tp := []string{
+	_ = []string{
 		"Xtd 01 1CECFF12 08 20 10 00 03 FF 02 FF 01\n",
 		"Xtd 01 1CEBFF12 08 01 8B 45 00 24 B5 9D D9\n",
 		"Xtd 01 1CEBFF12 08 02 68 D0 91 5F 05 B9 1D\n",
@@ -78,10 +78,13 @@ func main() {
 		}
 		go read(conn)
 
-		for _, t := range tp {
-			//conn.Write([]byte("Xtd 02 0CCBF782 08 13 00 86 00 B8 0B 00 00\n"))
-			conn.Write([]byte(t)) // 13 00 86 00 B8 0B 00 00\n"))
-		}
+		conn.Write([]byte("Xtd 01 18EEFF12 08 56 18 23 04 00 81 00 A0\n"))
+		/*
+			for _, t := range tp {
+				//conn.Write([]byte("Xtd 02 0CCBF782 08 13 00 86 00 B8 0B 00 00\n"))
+				conn.Write([]byte(t)) // 13 00 86 00 B8 0B 00 00\n"))
+			}
+		*/
 	}
 
 }

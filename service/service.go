@@ -13,7 +13,7 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/hashicorp/go-multierror"
 
-	can "github.com/sauravgsh16/can-interface"
+	"github.com/sauravgsh16/can-interface"
 	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
 	"github.com/sauravgsh16/ecu/domain"

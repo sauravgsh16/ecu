@@ -1,20 +1,55 @@
 package main
 
-import (
-	"fmt"
-	"log"
-	"time"
+import "fmt"
 
-	"github.com/sauravgsh16/ecu/can"
+const (
+	hexchars = "0123456789abcdef"
 )
 
+func encode(src byte) []byte {
+	dst := make([]byte, 2)
+	dst[0] = hexchars[src>>4]
+	dst[1] = hexchars[src&0x0F]
+	return dst
+}
+
+func main() {
+	sb := encode(byte(255))
+	a, ok := fromHexChar(sb[0])
+	if !ok {
+		fmt.Println("Error")
+	}
+	b, ok := fromHexChar(sb[1])
+	if !ok {
+		fmt.Println("Error")
+	}
+
+	h := a<<4 | b
+	fmt.Printf("%#v\n", h)
+
+}
+
+func fromHexChar(ch byte) (byte, bool) {
+	switch {
+	case '0' <= ch && ch <= '9':
+		return ch - '0', true
+	case 'a' <= ch && ch <= 'f':
+		return ch - 'a' + 10, true
+	case 'A' <= ch && ch <= 'F':
+		return ch - 'A' + 10, true
+	default:
+		return 0, false
+	}
+}
+
+/*
 func main() {
 	forever := make(chan interface{})
 	done := make(chan interface{})
 
 	in := make(chan can.DataHolder)
 
-	c, err := can.New(in)
+	c, err := can.New("tcp://localhost:19000", in)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
@@ -22,7 +57,7 @@ func main() {
 
 	go func() {
 		timer := time.NewTimer(5 * time.Second)
-		ticker := time.NewTicker(1 * time.Millisecond)
+		ticker := time.NewTicker(3 * time.Second)
 		var count int
 	loop:
 		for {
@@ -52,3 +87,4 @@ func main() {
 
 	<-forever
 }
+*/

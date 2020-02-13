@@ -8,7 +8,7 @@ import (
 
 	"github.com/sauravgsh16/ecu/util"
 
-	can "github.com/sauravgsh16/can-interface"
+	"github.com/sauravgsh16/can-interface"
 	"github.com/sauravgsh16/ecu/config"
 	"github.com/sauravgsh16/ecu/handler"
 )
