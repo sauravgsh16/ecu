@@ -13,7 +13,7 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/hashicorp/go-multierror"
 
-	"github.com/sauravgsh16/ecu/can"
+	can "github.com/sauravgsh16/can-interface"
 	"github.com/sauravgsh16/ecu/client"
 	"github.com/sauravgsh16/ecu/config"
 	"github.com/sauravgsh16/ecu/domain"
@@ -135,7 +135,7 @@ func initEcu(s service, c *ecuConfig) error {
 		t.first = true
 
 	case *hwService:
-		t.Incoming = make(chan *can.TP)
+		t.Incoming = make(chan can.DataHolder)
 		if t.can, err = can.New(t.Incoming); err != nil {
 			return err
 		}
@@ -300,14 +300,14 @@ func (e *ecuService) multiplexlisteners() {
 	}()
 }
 
-func (e *ecuService) CreateUnicastHandlers(idCh chan string, errCh chan error, kind int) {
+func (e *ecuService) CreateUnicastHandlers(watcher chan string, errCh chan error, kind int) {
 	switch kind {
 	case leader:
 		go func() {
 		loop:
 			for {
 				select {
-				case id := <-idCh:
+				case id := <-watcher:
 					if err := e.createSender(id, config.SendSn, handler.NewSendSnSender); err != nil {
 						log.Fatalf(err.Error())
 					}
@@ -325,13 +325,14 @@ func (e *ecuService) CreateUnicastHandlers(idCh chan string, errCh chan error, k
 	case member:
 		go func() {
 			select {
-			case <-idCh:
+			case <-watcher:
 				if err := e.createReceiver(e.s.getID(), handler.NewSendSnReceiver); err != nil {
 					log.Fatalf(err.Error())
 				}
 				if err := e.createSender(e.s.getID(), config.Join, handler.NewJoinSender); err != nil {
 					log.Fatalf(err.Error())
 				}
+
 				switch t := e.s.(type) {
 				case *swService:
 					t.joinCh <- true

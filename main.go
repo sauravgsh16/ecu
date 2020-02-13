@@ -12,7 +12,7 @@ func main() {
 	forever := make(chan interface{})
 	done := make(chan interface{})
 
-	in := make(chan *can.TP)
+	in := make(chan can.DataHolder)
 
 	c, err := can.New(in)
 	if err != nil {
@@ -22,7 +22,7 @@ func main() {
 
 	go func() {
 		timer := time.NewTimer(5 * time.Second)
-		ticker := time.NewTicker(10 * time.Second)
+		ticker := time.NewTicker(1 * time.Millisecond)
 		var count int
 	loop:
 		for {

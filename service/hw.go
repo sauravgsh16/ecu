@@ -6,7 +6,9 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/sauravgsh16/ecu/can"
+	"github.com/sauravgsh16/ecu/util"
+
+	can "github.com/sauravgsh16/can-interface"
 	"github.com/sauravgsh16/ecu/config"
 	"github.com/sauravgsh16/ecu/handler"
 )
@@ -18,7 +20,7 @@ type hwService struct {
 	joinCh   chan bool
 	idCh     chan bool
 	mux      sync.Mutex
-	Incoming chan *can.TP
+	Incoming chan can.DataHolder
 }
 
 func (hw *hwService) getID() string {
@@ -127,27 +129,38 @@ func (l *LeaderEcuHW) handleUnicast() {
 
 func (l *LeaderEcuHW) handleCanIncoming() {
 	go func() {
-		for tp := range l.s.(*hwService).Incoming {
-			switch tp.Pgn {
+		for msg := range l.s.(*hwService).Incoming {
 
-			// announce Sn
-			case "ff02":
-				go l.announceSnHW(tp)
-			// announce VIN
-			case "ff03":
-				go l.announceVinHW(tp)
-			// send Join
-			case "B200":
+			switch t := msg.(type) {
 
-			// send Sn
-			case "0100":
+			case *can.TP:
+				switch t.Pgn {
+				// announce Sn
+				case "ff02":
+					go l.announceSnHW(t)
+				// announce VIN
+				case "ff03":
+					go l.announceVinHW(t)
+				// send Join
+				case "B200":
 
-			// start rekey
-			case "B400":
+				// send Sn
+				case "0100":
+					go l.sendSn(t)
+				// send nonce
+				case "ff01":
+					go l.announceNonce(t)
+				}
 
-			// send nonce
-			case "B500":
+			case *can.Message:
+				switch t.PGN {
+				// start rekey
+				case "ff02":
+					go l.announceRekey(t)
 
+				default:
+					fmt.Printf("%#v\n", t)
+				}
 			}
 		}
 	}()
@@ -158,7 +171,7 @@ func (l *LeaderEcuHW) announceSnHW(tp *can.TP) {
 	if !ok {
 		log.Fatalf("announce Sn handler not found")
 	}
-	l.announce(tp, h)
+	l.send(tp, h)
 }
 
 func (l *LeaderEcuHW) announceVinHW(tp *can.TP) {
@@ -166,11 +179,35 @@ func (l *LeaderEcuHW) announceVinHW(tp *can.TP) {
 	if !ok {
 		log.Fatalf("announce Sn handler not found")
 	}
-	l.announce(tp, h)
+	l.send(tp, h)
 }
 
-func (l *LeaderEcuHW) announce(tp *can.TP, s handler.Sender) {
-	msg := l.generateMessage(tp.Data)
+func (l *LeaderEcuHW) announceNonce(tp *can.TP) {
+	h, ok := l.broadcasters[config.Nonce]
+	if !ok {
+		log.Fatalf("announce nonce handler not found")
+	}
+	l.send(tp, h)
+}
+
+func (l *LeaderEcuHW) announceRekey(msg *can.Message) {
+	h, ok := l.broadcasters[config.Rekey]
+	if !ok {
+		log.Fatalf("announce nonce handler not found")
+	}
+	l.send(msg, h)
+}
+
+func (l *LeaderEcuHW) sendSn(m can.DataHolder) {
+	h, ok := l.senders[util.JoinString(config.SendSn, string(encode(m.GetDst())))]
+	if !ok {
+		log.Fatalf("send Sn handler not found")
+	}
+	l.send(m, h)
+}
+
+func (l *LeaderEcuHW) send(m can.DataHolder, s handler.Sender) {
+	msg := l.generateMessage(m.GetData())
 	if err := s.Send(msg); err != nil {
 		log.Fatalf("error sending announce sn: %s", err.Error())
 	}
@@ -285,6 +322,17 @@ func prepareCanMsg(src, dst byte, data []byte, pgn []byte) ([]*can.Message, erro
 }
 
 // TODO: Move to utils
+const (
+	hexchars = "0123456789abcdef"
+)
+
+func encode(src byte) []byte {
+	dst := make([]byte, 2)
+	dst[0] = hexchars[src>>4]
+	dst[1] = hexchars[src&0x0F]
+	return dst
+}
+
 func fromHexChar(ch byte) (byte, bool) {
 	switch {
 	case '0' <= ch && ch <= '9':
