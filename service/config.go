@@ -29,8 +29,8 @@ func leaderConfig() *ecuConfig {
 		subscribers: []func(string) (handler.Receiver, error){
 			handler.NewSnSubscriber,
 			handler.NewVinSubscriber,
-			handler.NewRekeySubscriber,
 			handler.NewNonceSubscriber,
+			handler.NewRekeySubscriber,
 		},
 		senders: []func(string) (handler.Sender, error){
 			handler.NewSendSnSender,
@@ -49,10 +49,10 @@ func memberConfig() *ecuConfig {
 			handler.NewRekeyAnnouncer,
 		},
 		subscribers: []func(string) (handler.Receiver, error){
-			handler.NewRekeySubscriber,
-			handler.NewNonceSubscriber,
 			handler.NewSnSubscriber,
 			handler.NewVinSubscriber,
+			handler.NewNonceSubscriber,
+			handler.NewRekeySubscriber,
 		},
 		senders: []func(string) (handler.Sender, error){
 			handler.NewJoinSender,

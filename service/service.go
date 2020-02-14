@@ -136,7 +136,8 @@ func initEcu(s service, c *ecuConfig) error {
 
 	case *hwService:
 		t.Incoming = make(chan can.DataHolder)
-		if t.can, err = can.New(defaultvbsURL, t.Incoming); err != nil {
+		name := "Client Header \"0.1\" Name:\"Ecu Simulator Interface\""
+		if t.can, err = can.New(defaultvbsURL, t.Incoming, name); err != nil {
 			return err
 		}
 

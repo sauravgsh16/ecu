@@ -132,7 +132,8 @@ func (l *LeaderEcu) AnnounceSn() error {
 	log.Printf("Broadcasting Sn from AppID: - %s\n", l.s.getID())
 
 	hashSn := util.GenerateHash([]byte(l.s.(*swService).domain.GetSn()))
-	if err := h.Send(l.generateMessage([]byte(hashSn))); err != nil {
+
+	if err := l.send(h, []byte(hashSn), "announceSn"); err != nil {
 		return err
 	}
 	return l.AnnounceVin()
@@ -207,15 +208,15 @@ func (l *LeaderEcu) handleJoin(msg *client.Message) {
 
 	log.Printf("Received Join from AppID: %s\n", msg.Metadata.Get(appKey))
 
-	go l.SendSn(appID)
+	go l.sendSn(appID)
 }
 
 // SendSn sends Sn to memeber ECUs
-func (l *LeaderEcu) SendSn(id string) {
+func (l *LeaderEcu) sendSn(id string) {
 	l.mux.RLock()
 	defer l.mux.RUnlock()
 
-	sender, ok := l.senders[util.JoinString(config.SendSn, id)]
+	s, ok := l.senders[util.JoinString(config.SendSn, id)]
 	if !ok {
 		panic("sender not found")
 	}
@@ -228,9 +229,8 @@ func (l *LeaderEcu) SendSn(id string) {
 	// Sn sent here is (CT || mac(Snl-ecu-mac, CT)) - 32 bytes
 
 	hashSn := util.GenerateHash([]byte(l.s.(*swService).domain.GetSn()))
-	if err := sender.Send(l.generateMessage([]byte(hashSn))); err != nil {
-		// TODO: Better Error Handling
-		// Add logger
-		fmt.Printf("Error while sending message: %s", err.Error())
+
+	if err := l.send(s, []byte(hashSn), "sendSn"); err != nil {
+		log.Fatalf(err.Error())
 	}
 }

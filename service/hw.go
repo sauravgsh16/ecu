@@ -10,7 +10,6 @@ import (
 
 	"github.com/sauravgsh16/can-interface"
 	"github.com/sauravgsh16/ecu/config"
-	"github.com/sauravgsh16/ecu/handler"
 )
 
 type hwService struct {
@@ -40,7 +39,7 @@ func (hw *hwService) setID(id string) {
 
 // LeaderEcuHW is a leader interface with the h/w
 type LeaderEcuHW struct {
-	ecuService
+	hwEcuService
 }
 
 func newLeaderHW(c *ecuConfig, initCh chan bool) (*LeaderEcuHW, error) {
@@ -49,6 +48,7 @@ func newLeaderHW(c *ecuConfig, initCh chan bool) (*LeaderEcuHW, error) {
 	l.s = &hwService{
 		idCh: l.idCh,
 	}
+	l.distinct = make(chan can.DataHolder)
 
 	if err := initEcu(l.s, c); err != nil {
 		return nil, err
@@ -104,6 +104,7 @@ func (l *LeaderEcuHW) StartListeners() {
 		}
 	}()
 	l.handleUnicast()
+
 }
 
 func (l *LeaderEcuHW) handleUnicast() {
@@ -127,12 +128,31 @@ func (l *LeaderEcuHW) handleUnicast() {
 			}
 		}
 	}()
+
+	l.handleDistinct()
 	l.handleCanIncoming()
 }
 
-func (l *LeaderEcuHW) handleCanIncoming() {
+func (l *LeaderEcuHW) handleDistinct() {
 	go func() {
-		for msg := range l.s.(*hwService).Incoming {
+		for {
+			select {
+			case d := <-l.distinct:
+				switch d.(*can.TP).Pgn {
+				case "0100":
+					l.sendSnHW(d)
+				default:
+					log.Fatalf("incorrect message received")
+					break
+				}
+			}
+		}
+	}()
+}
+
+func (hw *hwEcuService) handleCanIncoming() {
+	go func() {
+		for msg := range hw.s.(*hwService).Incoming {
 
 			switch t := msg.(type) {
 
@@ -140,26 +160,24 @@ func (l *LeaderEcuHW) handleCanIncoming() {
 				switch t.Pgn {
 				// announce Sn
 				case "ff02":
-					go l.announceSnHW(t)
+					go hw.announceSnHW(t)
 				// announce VIN
 				case "ff03":
-					go l.announceVinHW(t)
-				// send Join
-				case "B200":
-
-				// send Sn
-				case "0100":
-					go l.sendSn(t)
+					go hw.announceVinHW(t)
 				// send nonce
 				case "ff01":
-					go l.announceNonce(t)
+					go hw.announceNonceHW(t)
+
+				default:
+					// Join or SendSn
+					hw.distinct <- t
 				}
 
 			case *can.Message:
 				switch t.PGN {
 				// start rekey
 				case "ff02":
-					go l.announceRekey(t)
+					go hw.announceRekeyHW(t)
 
 				default:
 					fmt.Printf("%#v\n", t)
@@ -169,56 +187,20 @@ func (l *LeaderEcuHW) handleCanIncoming() {
 	}()
 }
 
-func (l *LeaderEcuHW) announceSnHW(tp *can.TP) {
-	h, ok := l.broadcasters[config.Sn]
-	if !ok {
-		log.Fatalf("announce Sn handler not found")
-	}
-	l.send(tp, h)
-}
-
-func (l *LeaderEcuHW) announceVinHW(tp *can.TP) {
-	h, ok := l.broadcasters[config.Vin]
-	if !ok {
-		log.Fatalf("announce Sn handler not found")
-	}
-	l.send(tp, h)
-}
-
-func (l *LeaderEcuHW) announceNonce(tp *can.TP) {
-	h, ok := l.broadcasters[config.Nonce]
-	if !ok {
-		log.Fatalf("announce nonce handler not found")
-	}
-	l.send(tp, h)
-}
-
-func (l *LeaderEcuHW) announceRekey(msg *can.Message) {
-	h, ok := l.broadcasters[config.Rekey]
-	if !ok {
-		log.Fatalf("announce nonce handler not found")
-	}
-	l.send(msg, h)
-}
-
-func (l *LeaderEcuHW) sendSn(m can.DataHolder) {
+func (l *LeaderEcuHW) sendSnHW(m can.DataHolder) {
 	h, ok := l.senders[util.JoinString(config.SendSn, string(encode(m.GetDst())))]
 	if !ok {
 		log.Fatalf("send Sn handler not found")
 	}
-	l.send(m, h)
-}
 
-func (l *LeaderEcuHW) send(m can.DataHolder, s handler.Sender) {
-	msg := l.generateMessage(m.GetData())
-	if err := s.Send(msg); err != nil {
-		log.Fatalf("error sending announce sn: %s", err.Error())
+	if err := l.send(h, m.GetData(), "sendSn"); err != nil {
+		log.Fatalf(err.Error())
 	}
 }
 
 // MemberEcuHW is a member interface with h/w
 type MemberEcuHW struct {
-	ecuService
+	hwEcuService
 }
 
 func newMemberHW(c *ecuConfig, initCh chan bool) (*MemberEcuHW, error) {
@@ -228,6 +210,7 @@ func newMemberHW(c *ecuConfig, initCh chan bool) (*MemberEcuHW, error) {
 		joinCh: make(chan bool),
 		idCh:   m.idCh,
 	}
+	m.distinct = make(chan can.DataHolder)
 
 	if err := initEcu(m.s, c); err != nil {
 		return nil, err
@@ -301,6 +284,75 @@ func (m *MemberEcuHW) handleUnicast() {
 			}
 		}
 	}()
+
+	m.handleDistinct()
+	m.handleCanIncoming()
+}
+
+func (m *MemberEcuHW) handleDistinct() {
+	go func() {
+		for {
+			select {
+			case d := <-m.distinct:
+				switch d.(*can.TP).Pgn {
+				case "B200":
+					// TODO: SEND JOIN
+				default:
+					log.Fatalf("incorrect message received")
+					break
+				}
+			}
+		}
+	}()
+}
+
+type hwEcuService struct {
+	ecuService
+	distinct chan can.DataHolder
+}
+
+func (hw *hwEcuService) announceSnHW(tp can.DataHolder) {
+	h, ok := hw.broadcasters[config.Sn]
+	if !ok {
+		log.Fatalf("announce Sn handler not found")
+	}
+
+	if err := hw.send(h, tp.GetData(), "announceSn"); err != nil {
+		log.Fatalf(err.Error())
+	}
+}
+
+func (hw *hwEcuService) announceVinHW(tp can.DataHolder) {
+	h, ok := hw.broadcasters[config.Vin]
+	if !ok {
+		log.Fatalf("announce Sn handler not found")
+	}
+
+	if err := hw.send(h, tp.GetData(), "announceVin"); err != nil {
+		log.Fatalf(err.Error())
+	}
+}
+
+func (hw *hwEcuService) announceNonceHW(tp can.DataHolder) {
+	h, ok := hw.broadcasters[config.Nonce]
+	if !ok {
+		log.Fatalf("announce nonce handler not found")
+	}
+
+	if err := hw.send(h, tp.GetData(), "nonce"); err != nil {
+		log.Fatalf(err.Error())
+	}
+}
+
+func (hw *hwEcuService) announceRekeyHW(m can.DataHolder) {
+	h, ok := hw.broadcasters[config.Rekey]
+	if !ok {
+		log.Fatalf("announce nonce handler not found")
+	}
+
+	if err := hw.send(h, m.GetData(), "rekey"); err != nil {
+		log.Fatalf(err.Error())
+	}
 }
 
 func prepareCanMsg(src, dst byte, data []byte, pgn []byte) ([]*can.Message, error) {

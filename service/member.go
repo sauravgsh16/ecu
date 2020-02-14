@@ -104,21 +104,10 @@ func (m *MemberEcu) handleUnicast() {
 func (m *MemberEcu) handleAnnounceSn(msg *client.Message) {
 	log.Printf("Received AnnounceSn From AppID: - %s\n", msg.Metadata.Get(appKey))
 
-	/*
-		if m.getnetworkformationflag() {
-			return
-		}
-	*/
-
 	if bytes.Equal(msg.Payload, []byte(m.s.(*swService).domain.GetSn())) {
 		log.Println("Received Sn is equal to Sn stored. Returning")
 		return
 	}
-
-	/*
-		// set n/w formation flag true, to ignore any rekey message
-		m.setnetworkformationflag(true)
-	*/
 
 	go m.SendJoin()
 }
