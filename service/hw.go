@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -34,6 +35,93 @@ func (hw *hwService) setID(id string) {
 
 	select {
 	case hw.idCh <- true:
+	}
+}
+
+type hwEcuService struct {
+	ecuService
+	distinct chan can.DataHolder
+}
+
+func (hw *hwEcuService) handleCanIncoming() {
+	go func() {
+		for msg := range hw.s.(*hwService).Incoming {
+
+			switch t := msg.(type) {
+
+			case *can.TP:
+				switch t.Pgn {
+				// announce Sn
+				case "ff02":
+					go hw.announceSnHW(t)
+				// announce VIN
+				case "ff03":
+					go hw.announceVinHW(t)
+				// send nonce
+				case "ff01":
+					go hw.announceNonceHW(t)
+
+				default:
+					// Join or SendSn
+					hw.distinct <- t
+				}
+
+			case *can.Message:
+				switch t.PGN {
+				// start rekey
+				case "ff02":
+					go hw.announceRekeyHW(t)
+
+				default:
+					fmt.Printf("%#v\n", t)
+				}
+			}
+		}
+		close(hw.distinct)
+	}()
+}
+
+func (hw *hwEcuService) announceSnHW(tp can.DataHolder) {
+	h, ok := hw.broadcasters[config.Sn]
+	if !ok {
+		log.Fatalf("announce Sn handler not found")
+	}
+
+	if err := hw.send(h, tp.GetData(), "announceSn"); err != nil {
+		log.Fatalf(err.Error())
+	}
+}
+
+func (hw *hwEcuService) announceVinHW(tp can.DataHolder) {
+	h, ok := hw.broadcasters[config.Vin]
+	if !ok {
+		log.Fatalf("announce Sn handler not found")
+	}
+
+	if err := hw.send(h, tp.GetData(), "announceVin"); err != nil {
+		log.Fatalf(err.Error())
+	}
+}
+
+func (hw *hwEcuService) announceNonceHW(tp can.DataHolder) {
+	h, ok := hw.broadcasters[config.Nonce]
+	if !ok {
+		log.Fatalf("announce nonce handler not found")
+	}
+
+	if err := hw.send(h, tp.GetData(), "nonce"); err != nil {
+		log.Fatalf(err.Error())
+	}
+}
+
+func (hw *hwEcuService) announceRekeyHW(m can.DataHolder) {
+	h, ok := hw.broadcasters[config.Rekey]
+	if !ok {
+		log.Fatalf("announce nonce handler not found")
+	}
+
+	if err := hw.send(h, m.GetData(), "rekey"); err != nil {
+		log.Fatalf(err.Error())
 	}
 }
 
@@ -84,17 +172,50 @@ func (l *LeaderEcuHW) StartListeners() {
 				fmt.Println("Received VIN. Irrelevant Context.")
 
 			case config.Nonce:
-				/*
-					msgs := prepareCanMsg()
-					for _, msg := range msgs {
+				if i.msg.Metadata.Get(appKey) == l.s.getID() {
+					continue
+				}
 
+				go func() {
+					src := i.msg.Metadata.Get(appKey).(string)
+					dst := "FF"
+					pgn := []byte{0xff, 0x01}
+
+					msgs, err := prepareCanMsg(src, dst, i.msg.Payload, pgn)
+					if err != nil {
+						log.Fatalf("error preparing nonce msg: %s", err.Error())
 					}
-				*/
+					for _, msg := range msgs {
+						l.s.(*hwService).can.Out <- msg
+					}
+				}()
 
 			case config.Rekey:
 				if i.msg.Metadata.Get(appKey) == l.s.getID() {
 					continue
 				}
+
+				go func() {
+					var dst byte = 0xFF
+
+					s, err := strconv.Atoi(i.msg.Metadata.Get(appKey).(string))
+					if err != nil {
+						log.Fatalf("error preparing rekey msg: %s", err.Error())
+					}
+
+					b, err := parseInt(s)
+					if err != nil {
+						log.Fatalf("error preparing rekey msg: %s", err.Error())
+					}
+					src := b[0]
+
+					msg := &can.Message{
+						ArbitrationID: []uint8{0x19, dst, 0x00, src},
+						Data:          i.msg.Payload,
+					}
+
+					l.s.(*hwService).can.Out <- msg
+				}()
 
 			default:
 				l.unicastCh <- i
@@ -116,7 +237,20 @@ func (l *LeaderEcuHW) handleUnicast() {
 				switch name {
 
 				case config.Join:
-					// TODO: need to write Join request
+					go func() {
+						src := i.msg.Metadata.Get(appKey).(string)
+						dst := l.s.getID()
+						pgn := []byte{0x00, 0x00}
+
+						msgs, err := prepareCanMsg(src, dst, i.msg.Payload, pgn)
+						if err != nil {
+							log.Fatalf("error preparing join msg: %s", err.Error())
+						}
+
+						for _, msg := range msgs {
+							l.s.(*hwService).can.Out <- msg
+						}
+					}()
 
 				default:
 					// TODO: HANDLE NORMAL MESSAGE
@@ -148,44 +282,6 @@ func (l *LeaderEcuHW) handleDistinct() {
 				}
 			}
 		}
-	}()
-}
-
-func (hw *hwEcuService) handleCanIncoming() {
-	go func() {
-		for msg := range hw.s.(*hwService).Incoming {
-
-			switch t := msg.(type) {
-
-			case *can.TP:
-				switch t.Pgn {
-				// announce Sn
-				case "ff02":
-					go hw.announceSnHW(t)
-				// announce VIN
-				case "ff03":
-					go hw.announceVinHW(t)
-				// send nonce
-				case "ff01":
-					go hw.announceNonceHW(t)
-
-				default:
-					// Join or SendSn
-					hw.distinct <- t
-				}
-
-			case *can.Message:
-				switch t.PGN {
-				// start rekey
-				case "ff02":
-					go hw.announceRekeyHW(t)
-
-				default:
-					fmt.Printf("%#v\n", t)
-				}
-			}
-		}
-		close(hw.distinct)
 	}()
 }
 
@@ -242,18 +338,80 @@ func (m *MemberEcuHW) StartListeners() {
 			switch i.name {
 
 			case config.Sn:
+				go func() {
+					src := i.msg.Metadata.Get(appKey).(string)
+					dst := "FF"
+					pgn := []byte{0xff, 0x02}
+
+					msgs, err := prepareCanMsg(src, dst, i.msg.Payload, pgn)
+					if err != nil {
+						log.Fatalf("error preparing announce Sn msg: %s", err.Error())
+					}
+					for _, msg := range msgs {
+						m.s.(*hwService).can.Out <- msg
+					}
+				}()
 
 			case config.Vin:
+				go func() {
+					src := i.msg.Metadata.Get(appKey).(string)
+					dst := "FF"
+					pgn := []byte{0xff, 0x03}
+
+					msgs, err := prepareCanMsg(src, dst, i.msg.Payload, pgn)
+					if err != nil {
+						log.Fatalf("error preparing announce Vin msg: %s", err.Error())
+					}
+					for _, msg := range msgs {
+						m.s.(*hwService).can.Out <- msg
+					}
+				}()
 
 			case config.Rekey:
 				if i.msg.Metadata.Get(appKey) == m.s.getID() {
 					continue
 				}
 
+				go func() {
+					var dst byte = 0xFF
+
+					s, err := strconv.Atoi(i.msg.Metadata.Get(appKey).(string))
+					if err != nil {
+						log.Fatalf("error preparing rekey msg: %s", err.Error())
+					}
+
+					b, err := parseInt(s)
+					if err != nil {
+						log.Fatalf("error preparing rekey msg: %s", err.Error())
+					}
+					src := b[0]
+
+					msg := &can.Message{
+						ArbitrationID: []uint8{0x19, dst, 0x00, src},
+						Data:          i.msg.Payload,
+					}
+
+					m.s.(*hwService).can.Out <- msg
+				}()
+
 			case config.Nonce:
 				if i.msg.Metadata.Get(appKey) == m.s.getID() {
 					continue
 				}
+
+				go func() {
+					src := i.msg.Metadata.Get(appKey).(string)
+					dst := "FF"
+					pgn := []byte{0xff, 0x01}
+
+					msgs, err := prepareCanMsg(src, dst, i.msg.Payload, pgn)
+					if err != nil {
+						log.Fatalf("error preparing nonce msg: %s", err.Error())
+					}
+					for _, msg := range msgs {
+						m.s.(*hwService).can.Out <- msg
+					}
+				}()
 
 			default:
 				m.unicastCh <- i
@@ -275,7 +433,20 @@ func (m *MemberEcuHW) handleUnicast() {
 				switch name {
 
 				case config.SendSn:
-					// TODO: need to write SendSn request
+					go func() {
+						src := i.msg.Metadata.Get(appKey).(string)
+						dst := m.s.getID()
+						pgn := []byte{0x00, 0x01}
+
+						msgs, err := prepareCanMsg(src, dst, i.msg.Payload, pgn)
+						if err != nil {
+							log.Fatalf("error preparing SendSn msg: %s", err.Error())
+						}
+
+						for _, msg := range msgs {
+							m.s.(*hwService).can.Out <- msg
+						}
+					}()
 				default:
 					// TODO: HANDLE NORMAL MESSAGE
 					// TODO: Log it. For now just printing to stdout
@@ -320,73 +491,53 @@ func (m *MemberEcuHW) sendJoinHW(msg can.DataHolder) {
 	}
 }
 
-type hwEcuService struct {
-	ecuService
-	distinct chan can.DataHolder
-}
-
-func (hw *hwEcuService) announceSnHW(tp can.DataHolder) {
-	h, ok := hw.broadcasters[config.Sn]
-	if !ok {
-		log.Fatalf("announce Sn handler not found")
-	}
-
-	if err := hw.send(h, tp.GetData(), "announceSn"); err != nil {
-		log.Fatalf(err.Error())
-	}
-}
-
-func (hw *hwEcuService) announceVinHW(tp can.DataHolder) {
-	h, ok := hw.broadcasters[config.Vin]
-	if !ok {
-		log.Fatalf("announce Sn handler not found")
-	}
-
-	if err := hw.send(h, tp.GetData(), "announceVin"); err != nil {
-		log.Fatalf(err.Error())
-	}
-}
-
-func (hw *hwEcuService) announceNonceHW(tp can.DataHolder) {
-	h, ok := hw.broadcasters[config.Nonce]
-	if !ok {
-		log.Fatalf("announce nonce handler not found")
-	}
-
-	if err := hw.send(h, tp.GetData(), "nonce"); err != nil {
-		log.Fatalf(err.Error())
-	}
-}
-
-func (hw *hwEcuService) announceRekeyHW(m can.DataHolder) {
-	h, ok := hw.broadcasters[config.Rekey]
-	if !ok {
-		log.Fatalf("announce nonce handler not found")
-	}
-
-	if err := hw.send(h, m.GetData(), "rekey"); err != nil {
-		log.Fatalf(err.Error())
-	}
-}
-
-func prepareCanMsg(src, dst byte, data []byte, pgn []byte) ([]*can.Message, error) {
-	size, err := getSize(int64(len(data)))
+func prepareCanMsg(src, dst string, data []byte, pgn []byte) ([]*can.Message, error) {
+	s, err := strconv.Atoi(src)
 	if err != nil {
 		return nil, err
 	}
+
+	d, err := strconv.Atoi(dst)
+	if err != nil {
+		return nil, err
+	}
+
+	b, err := parseInt(s)
+	if err != nil {
+		return nil, err
+	}
+	source := b[0]
+
+	b, err = parseInt(d)
+	if err != nil {
+		return nil, err
+	}
+	dest := b[0]
+
+	size, err := parseInt(len(data))
+	if err != nil {
+		return nil, err
+	}
+
 	frames := getFrames(len(data))
 
 	var msgs []*can.Message
 
 	// EC message
+	var ecData []uint8
+	if len(size) > 1 {
+		ecData = []uint8{0x00, size[0], size[1], frames, 0x00, pgn[1], pgn[0], 0x00}
+	} else {
+		ecData = []uint8{0x00, size[0], 0x00, frames, 0x00, pgn[1], pgn[0], 0x00}
+	}
 	msgs = append(msgs, &can.Message{
-		ArbitrationID: []uint8{0x00, 0xec, src, dst},
-		Data:          []uint8{0x00, size, 0x00, frames, 0x00, pgn[1], pgn[0], 0x00},
+		ArbitrationID: []uint8{0x00, 0xec, source, dest},
+		Data:          ecData,
 	})
 
 	// EB message
 	msgs = append(msgs, &can.Message{
-		ArbitrationID: []uint8{0x00, 0xeb, src, dst},
+		ArbitrationID: []uint8{0x00, 0xeb, source, dest},
 		Data:          data,
 	})
 
@@ -424,21 +575,60 @@ func (i invalidByte) Error() string {
 	return fmt.Sprintf("error: invalid byte: %#U", rune(i))
 }
 
-func getSize(l int64) (byte, error) {
-	var size byte
+func parseInt(l int) ([]byte, error) {
+	sb := []byte(strconv.FormatInt(int64(l), 16))
 
-	sb := []byte(strconv.FormatInt(l, 16))
-	a, ok := fromHexChar(sb[0])
-	if !ok {
-		return 0, invalidByte(sb[0])
-	}
-	b, ok := fromHexChar(sb[1])
-	if !ok {
-		return 0, invalidByte(sb[1])
+	if len(sb) == 1 {
+		a, ok := fromHexChar(sb[0])
+		if !ok {
+			return nil, invalidByte(sb[0])
+		}
+
+		return []byte{a}, nil
 	}
 
-	size = (a << 4) | b
-	return size, nil
+	if len(sb) == 2 {
+		a, ok := fromHexChar(sb[0])
+		if !ok {
+			return nil, invalidByte(sb[0])
+		}
+
+		b, ok := fromHexChar(sb[1])
+		if !ok {
+			return nil, invalidByte(sb[1])
+		}
+
+		val := (a << 4) | b
+		return []byte{val}, nil
+	}
+
+	if len(sb) == 3 {
+		a, ok := fromHexChar(sb[0])
+		if !ok {
+			return nil, invalidByte(sb[0])
+		}
+
+		b, ok := fromHexChar(sb[1])
+		if !ok {
+			return nil, invalidByte(sb[1])
+		}
+
+		c, ok := fromHexChar(sb[2])
+		if !ok {
+			return nil, invalidByte(sb[2])
+		}
+
+		x := int16(a)
+		y := int16(b)
+		x = x<<8 | y<<4
+
+		val := make([]byte, 2)
+		val[0] = byte(x) | c
+		val[1] = byte(x >> 8)
+
+		return val, nil
+	}
+	return nil, errors.New("unsupported operation. int size more than 32 bytes")
 }
 
 func getFrames(l int) uint8 {
