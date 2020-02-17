@@ -75,31 +75,29 @@ func newLeaderHW(c *ecuConfig, initCh chan bool) (*LeaderEcuHW, error) {
 // StartListeners starts the listeners for a leader
 func (l *LeaderEcuHW) StartListeners() {
 	go func() {
-		for {
-			for i := range l.incoming {
-				switch i.name {
-				case config.Sn:
-					fmt.Println("Received Sn. Irrelevant Context.")
+		for i := range l.incoming {
+			switch i.name {
+			case config.Sn:
+				fmt.Println("Received Sn. Irrelevant Context.")
 
-				case config.Vin:
-					fmt.Println("Received VIN. Irrelevant Context.")
+			case config.Vin:
+				fmt.Println("Received VIN. Irrelevant Context.")
 
-				case config.Nonce:
-					/*
-						msgs := prepareCanMsg()
-						for _, msg := range msgs {
+			case config.Nonce:
+				/*
+					msgs := prepareCanMsg()
+					for _, msg := range msgs {
 
-						}
-					*/
-
-				case config.Rekey:
-					if i.msg.Metadata.Get(appKey) == l.s.getID() {
-						continue
 					}
+				*/
 
-				default:
-					l.unicastCh <- i
+			case config.Rekey:
+				if i.msg.Metadata.Get(appKey) == l.s.getID() {
+					continue
 				}
+
+			default:
+				l.unicastCh <- i
 			}
 		}
 	}()
@@ -121,9 +119,9 @@ func (l *LeaderEcuHW) handleUnicast() {
 					// TODO: need to write Join request
 
 				default:
-					// TODO: HANDLE NORMAL MESSAGE"
-					// TODO: Send to normal message write
-
+					// TODO: HANDLE NORMAL MESSAGE
+					// TODO: Send to normal message write. For now just loggin to stdout
+					fmt.Println(i.msg)
 				}
 			}
 		}
@@ -137,7 +135,10 @@ func (l *LeaderEcuHW) handleDistinct() {
 	go func() {
 		for {
 			select {
-			case d := <-l.distinct:
+			case d, ok := <-l.distinct:
+				if !ok {
+					break
+				}
 				switch d.(*can.TP).Pgn {
 				case "0100":
 					l.sendSnHW(d)
@@ -184,6 +185,7 @@ func (hw *hwEcuService) handleCanIncoming() {
 				}
 			}
 		}
+		close(hw.distinct)
 	}()
 }
 
@@ -236,27 +238,25 @@ func newMemberHW(c *ecuConfig, initCh chan bool) (*MemberEcuHW, error) {
 // StartListeners starts the listeners for a member
 func (m *MemberEcuHW) StartListeners() {
 	go func() {
-		for {
-			for i := range m.incoming {
-				switch i.name {
+		for i := range m.incoming {
+			switch i.name {
 
-				case config.Sn:
+			case config.Sn:
 
-				case config.Vin:
+			case config.Vin:
 
-				case config.Rekey:
-					if i.msg.Metadata.Get(appKey) == m.s.getID() {
-						continue
-					}
-
-				case config.Nonce:
-					if i.msg.Metadata.Get(appKey) == m.s.getID() {
-						continue
-					}
-
-				default:
-					m.unicastCh <- i
+			case config.Rekey:
+				if i.msg.Metadata.Get(appKey) == m.s.getID() {
+					continue
 				}
+
+			case config.Nonce:
+				if i.msg.Metadata.Get(appKey) == m.s.getID() {
+					continue
+				}
+
+			default:
+				m.unicastCh <- i
 			}
 		}
 	}()
@@ -275,10 +275,10 @@ func (m *MemberEcuHW) handleUnicast() {
 				switch name {
 
 				case config.SendSn:
-
+					// TODO: need to write SendSn request
 				default:
-					// TODO: HANDLE NORMAL MESSAGE"
-					// TODO: Log it. Now just printing to stdout
+					// TODO: HANDLE NORMAL MESSAGE
+					// TODO: Log it. For now just printing to stdout
 					fmt.Println(i.msg)
 				}
 			}
@@ -293,10 +293,13 @@ func (m *MemberEcuHW) handleDistinct() {
 	go func() {
 		for {
 			select {
-			case d := <-m.distinct:
+			case d, ok := <-m.distinct:
+				if !ok {
+					break
+				}
 				switch d.(*can.TP).Pgn {
 				case "B200":
-					// TODO: SEND JOIN
+					m.sendJoinHW(d)
 				default:
 					log.Fatalf("incorrect message received")
 					break
@@ -304,6 +307,17 @@ func (m *MemberEcuHW) handleDistinct() {
 			}
 		}
 	}()
+}
+
+func (m *MemberEcuHW) sendJoinHW(msg can.DataHolder) {
+	h, ok := m.senders[util.JoinString(config.Join, string(encode(msg.GetDst())))]
+	if !ok {
+		log.Fatalf("send join handler not found")
+	}
+
+	if err := m.send(h, msg.GetData(), "sendJoin"); err != nil {
+		log.Fatalf(err.Error())
+	}
 }
 
 type hwEcuService struct {

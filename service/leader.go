@@ -59,33 +59,31 @@ func newLeader(c *ecuConfig, initCh chan bool) (*LeaderEcu, error) {
 // StartListeners starts the listeners for a leader
 func (l *LeaderEcu) StartListeners() {
 	go func() {
-		for {
-			for i := range l.incoming {
+		for i := range l.incoming {
 
-				switch i.name {
+			switch i.name {
 
-				case config.Vin:
-					fmt.Println("Received VIN. Irrelevant Context.")
+			case config.Vin:
+				fmt.Println("Received VIN. Irrelevant Context.")
 
-				case config.Sn:
-					fmt.Println("Received Sn. Irrelevant Context.")
+			case config.Sn:
+				fmt.Println("Received Sn. Irrelevant Context.")
 
-				case config.Nonce:
-					if i.msg.Metadata.Get(appKey) == l.s.getID() {
-						continue
-					}
-					go l.handleReceiveNonce(i.msg)
-
-				case config.Rekey:
-					if i.msg.Metadata.Get(appKey) == l.s.getID() {
-						continue
-					}
-					go l.AnnounceSn()
-					go l.handleRekey(i.msg)
-
-				default:
-					l.unicastCh <- i
+			case config.Nonce:
+				if i.msg.Metadata.Get(appKey) == l.s.getID() {
+					continue
 				}
+				go l.handleReceiveNonce(i.msg)
+
+			case config.Rekey:
+				if i.msg.Metadata.Get(appKey) == l.s.getID() {
+					continue
+				}
+				go l.AnnounceSn()
+				go l.handleRekey(i.msg)
+
+			default:
+				l.unicastCh <- i
 			}
 		}
 	}()
@@ -118,9 +116,6 @@ func (l *LeaderEcu) handleUnicast() {
 
 // AnnounceSn accnounces the Sn
 func (l *LeaderEcu) AnnounceSn() error {
-	// Set network formation flag true - so that any rekey message
-	// during n/w formation will be ignored.
-
 	l.mux.RLock()
 	defer l.mux.RUnlock()
 
@@ -198,7 +193,7 @@ func (l *LeaderEcu) loadCerts() error {
 }
 
 func (l *LeaderEcu) handleJoin(msg *client.Message) {
-	// register the send sn register
+	// register the send sn handler
 	appID, err := msg.Metadata.Verify(appKey)
 	if err != nil {
 		// TODO: improve error handling

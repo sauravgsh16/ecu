@@ -46,31 +46,29 @@ func newMember(c *ecuConfig, initCh chan bool) (*MemberEcu, error) {
 // StartListeners starts the listeners for a member
 func (m *MemberEcu) StartListeners() {
 	go func() {
-		for {
-			for i := range m.incoming {
-				switch i.name {
+		for i := range m.incoming {
+			switch i.name {
 
-				case config.Sn:
-					go m.handleAnnounceSn(i.msg)
+			case config.Sn:
+				go m.handleAnnounceSn(i.msg)
 
-				case config.Vin:
-					go m.handleAnnounceVin(i.msg)
+			case config.Vin:
+				go m.handleAnnounceVin(i.msg)
 
-				case config.Rekey:
-					if i.msg.Metadata.Get(appKey) == m.s.getID() {
-						continue
-					}
-					go m.handleRekey(i.msg)
-
-				case config.Nonce:
-					if i.msg.Metadata.Get(appKey) == m.s.getID() {
-						continue
-					}
-					go m.handleReceiveNonce(i.msg)
-
-				default:
-					m.unicastCh <- i
+			case config.Rekey:
+				if i.msg.Metadata.Get(appKey) == m.s.getID() {
+					continue
 				}
+				go m.handleRekey(i.msg)
+
+			case config.Nonce:
+				if i.msg.Metadata.Get(appKey) == m.s.getID() {
+					continue
+				}
+				go m.handleReceiveNonce(i.msg)
+
+			default:
+				m.unicastCh <- i
 			}
 		}
 	}()
@@ -92,7 +90,7 @@ func (m *MemberEcu) handleUnicast() {
 					go m.handleSn(i.msg)
 
 				default:
-					// TODO: HANDLE NORMAL MESSAGE"
+					// TODO: HANDLE NORMAL MESSAGE
 					// TODO: Log it. Now just printing to stdout
 					fmt.Println(i.msg)
 				}
@@ -115,8 +113,7 @@ func (m *MemberEcu) handleAnnounceSn(msg *client.Message) {
 func (m *MemberEcu) handleAnnounceVin(msg *client.Message) {
 	// TODO : ******************
 	log.Printf("Received VIN From AppID - %s\n", msg.Metadata.Get(appKey))
-	fmt.Println("Not sure what needs to done here")
-	// fmt.Printf("Printing the received message: %+v\n", msg)
+	log.Println("Not sure what needs to done here")
 	// TODO : ******************
 }
 
@@ -136,8 +133,7 @@ func (m *MemberEcu) SendJoin() {
 
 	cert, err := m.aggregateCert()
 	if err != nil {
-		// TODO: Better Error Handling
-		// Add logger
+		// TODO: Better Error Handling. Add logger
 		log.Printf("Error while creating payload: %s", err.Error())
 	}
 
@@ -149,8 +145,7 @@ func (m *MemberEcu) SendJoin() {
 	log.Printf("Sent Join from - AppID: %s\n", m.s.getID())
 
 	if err := m.send(sender, cert, "cert"); err != nil {
-		// TODO: Better Error Handling
-		// Add logger
+		// TODO: Better Error Handling. Add logger
 		log.Printf("Error while sending message: %s", err.Error())
 	}
 
@@ -164,13 +159,7 @@ func (m *MemberEcu) handleSn(msg *client.Message) {
 	log.Printf("Received Sn From AppID: - %s\n", msg.Metadata.Get(appKey))
 
 	if err := m.s.(*swService).domain.SetSn(msg.Payload); err != nil {
-		// TODO: Better Error Handling
-		// Add logger
+		// TODO: Better Error Handling. Add logger
 		log.Printf("error setting network key Sn: %s", err.Error())
 	}
-	/*
-
-		m.setnetworkformationflag(false)
-
-	*/
 }
